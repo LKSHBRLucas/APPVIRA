@@ -174,8 +174,8 @@ importers:
         specifier: ^1.1.2
         version: 1.1.2(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       vite-plugin-enter-dev:
-        specifier: '>=0.0.8'
-        version: 0.0.8(vite@7.3.2(@types/node@24.12.2)(jiti@1.21.7)(lightningcss@1.32.0))
+        specifier: ^0.0.10
+        version: 0.0.10(vite@7.3.2(@types/node@24.12.2)(jiti@1.21.7)(lightningcss@1.32.0))
       zod:
         specifier: ^4.1.5
         version: 4.3.6
@@ -2837,10 +2837,10 @@ packages:
   victory-vendor@37.3.6:
     resolution: {integrity: sha512-SbPDPdDBYp+5MJHhBCAyI7wKM3d5ivekigc2Dk2s7pgbZ9wIgIBYGVw4zGHBml/qTFbexrofXW6Gu4noGxrOwQ==}
 
-  vite-plugin-enter-dev@0.0.8:
-    resolution: {integrity: sha512-WroAMF4QlHNxa+CMOwEdHmJZzFNf4c4EUEEbZZt9qeoEgHuwaLv65NKK0jJKUKGxaTmvgMjx2qjEPGSNFlw0Pg==}
+  vite-plugin-enter-dev@0.0.10:
+    resolution: {integrity: sha512-wBKsXMgRb2jcmlmn2nCNJTYz9W4dT/MtOWJ+Kdz/o6Ox8ONkp9E2It22amVlDrS3/VF4vfORv8Fija8KXuQaxQ==}
     peerDependencies:
-      vite: ^5.0.0 || ^6.0.0
+      vite: ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0
 
   vite@7.3.2:
     resolution: {integrity: sha512-Bby3NOsna2jsjfLVOHKes8sGwgl4TT0E6vvpYgnAYDIF/tie7MRaFthmKuHx1NSXjiTueXH3do80FMQgvEktRg==}
@@ -5402,7 +5402,7 @@ snapshots:
       d3-time: 3.1.0
       d3-timer: 3.0.1
 
-  vite-plugin-enter-dev@0.0.8(vite@7.3.2(@types/node@24.12.2)(jiti@1.21.7)(lightningcss@1.32.0)):
+  vite-plugin-enter-dev@0.0.10(vite@7.3.2(@types/node@24.12.2)(jiti@1.21.7)(lightningcss@1.32.0)):
     dependencies:
       '@vitejs/plugin-react': 5.2.0(vite@7.3.2(@types/node@24.12.2)(jiti@1.21.7)(lightningcss@1.32.0))
       vite: 7.3.2(@types/node@24.12.2)(jiti@1.21.7)(lightningcss@1.32.0)
