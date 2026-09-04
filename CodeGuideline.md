@@ -6,20 +6,61 @@
 project-root/
   ├── i18n.config.json       # i18n manifest for supported locales and language metadata
   ├── public/
-  │   └── locales/           # public/locales/{code}.json translation files
+  │   ├── locales/           # public/locales/{code}.json translation files
+  │   ├── manifest.webmanifest  # PWA manifest
+  │   └── sw.js              # Service worker (push + notification click)
   ├── src/
   │   ├── components/        # All reusable UI components
-  │   │   └── ui/            # Prebuilt and custom UI components, grouped by function
-  │   ├── hooks/             # Custom React hooks
+  │   │   ├── ui/            # shadcn prebuilt components
+  │   │   ├── app-shell.tsx  # App shell: header + bottom nav + Outlet
+  │   │   ├── auth-provider.tsx  # AuthProvider (supabase session state)
+  │   │   └── guarded-route.tsx  # Route guard (auth + onboarding)
+  │   ├── hooks/             # Custom React hooks (one hook per file)
+  │   │   ├── use-auth.ts    # useAuth() — session/user/signIn/signUp/signOut
+  │   │   ├── use-profile.ts # profile query + update
+  │   │   ├── use-tasks.ts   # tasks CRUD mutations
+  │   │   ├── use-sessions.ts / use-session-mutations.ts
+  │   │   ├── use-checkin.ts # energy check-ins
+  │   │   ├── use-subscription.ts
+  │   │   ├── use-intentions.ts
+  │   │   ├── use-ai-chat.ts # SSE streaming chat with the AI backend function
+  │   │   ├── use-notifications.ts / use-push.ts
+  │   │   └── use-mobile.ts / use-toast.ts (template)
   │   ├── i18n/              # i18n runtime: config.ts (entry) + util.ts (helpers)
-  │   ├── lib/               # Utility functions and libraries
-  │   ├── pages/             # Application pages (each page in its own subdirectory)
-  │   ├── App.tsx            # Main app component, sets up route providers
-  │   ├── router.tsx         # Router config, sets up routing
-  │   ├── main.tsx           # Entry point for the React app
-  │   └── index.css          # Global styles
-  ├── package.json           # Project metadata and scripts
-  ├── tailwind.config.ts     # Tailwind CSS configuration
+  │   ├── lib/               # Pure domain logic + data access (no React)
+  │   │   ├── utils.ts       # cn()
+  │   │   ├── auth-context.ts
+  │   │   ├── intervention/  # types.ts, catalog.ts, engine.ts + tests (rules → intervention)
+  │   │   ├── metrics/       # metrics.ts + tests (initiation, LTA, completion, recovery)
+  │   │   ├── behaviors/     # profiles.ts (procrastination profile), insights.ts
+  │   │   ├── plan/          # suggestions.ts (SE→ENTÃO by rules)
+  │   │   └── data/          # supabase repos: profiles, tasks, sessions, catalogs,
+  │   │                      #   checkins, subscriptions, behaviors, consents,
+  │   │                      #   intentions, notifications, push, focus, intervention-results
+  │   ├── pages/             # Each page in its own subdirectory
+  │   │   ├── Index.tsx      # Home (next action, energy, "Estou travado")
+  │   │   ├── auth/          # login/signup
+  │   │   ├── onboarding/    # profile wizard → procrastination profile
+  │   │   ├── tasks/         # list + new (decomposition + first step)
+  │   │   ├── stuck/         # 3-step stuck flow → intervention → session
+  │   │   ├── session/       # focus mode + post-session check-in + recovery
+  │   │   ├── dashboard/     # metrics + weekly report + insights
+  │   │   ├── profile/       # plan (paywall mock), SE→ENTÃO, privacy
+  │   │   ├── assistant/     # AI chat (streaming + crisis screen)
+  │   │   ├── notifications/ # in-app center + push toggle
+  │   │   └── NotFound.tsx
+  │   ├── App.tsx            # Providers (QueryClient, Auth, Tooltip, Toaster, Router)
+  │   ├── router.tsx         # Router config (routes registered here)
+  │   ├── main.tsx           # Entry point
+  │   └── index.css          # Global styles + design tokens (dark premium)
+  ├── supabase/
+  │   ├── config.toml
+  │   ├── migrations/        # migration_20260903_032004000 (20 tables + RLS + seeds)
+  │   └── functions/
+  │       └── assistant-chat/index.ts  # AI chat backend function (Qwen 3.8 Max)
+  ├── vitest.config.ts       # Unit tests for lib/intervention and lib/metrics
+  ├── package.json
+  ├── tailwind.config.ts
   └── ...                    # Other config and lock files
 ```
 
@@ -27,105 +68,61 @@ project-root/
 
 ## Directory Responsibilities
 
-- **public/**: Static files served directly. Place images, icons, and robots.txt here.
+- **public/**: Static files served directly. PWA manifest and service worker live here.
 - **public/locales/**: Translation files, one per language (`{code}.json`). Flat dotted keys (e.g. `home.hero.title`); the `fallbackLng` file is the structural source of truth.
 - **i18n.config.json**: The lightweight i18n manifest for fallback language, language labels, browser detection aliases, and document direction. Single source of truth for the language list.
-- **src/components/**: All UI components.  
-  - **ui/**: Contains atomic and composite UI components.  
-  - *Group related components into subdirectories if they share a domain or feature (e.g., `form/`, `charts/`).*
+- **src/components/**: All UI components.
+  - **ui/**: Contains atomic and composite UI components (shadcn).
+  - **app-shell.tsx**: Global chrome (header, bottom nav) rendered as a layout route; new feature pages go under `/` in `router.tsx` with a nav item added to `NAV_ITEMS`.
+  - **guarded-route.tsx**: Wrap every authenticated route. `requireOnboarding` redirects to `/onboarding` until the profile is completed.
 - **src/hooks/**: Custom React hooks. Each file should export a single hook focused on one responsibility.
-- **src/i18n/**: Two files only.
-  - `config.ts` is the runtime entry: imports the manifest via `util.ts`, initializes i18next (HTTP backend, language detector, react binding), syncs `<html lang/dir>`, and re-exports the helpers. Importing this file for its side effect boots i18next.
-  - `util.ts` holds pure helpers parsed from the manifest: `fallbackLng`, `supportedLngs`, `languageOptions`, `normalizeLanguage`, `getLanguageDirection`, plus types.
-  - Components use the official `useTranslation()` from `react-i18next` directly; there is no project-specific `useT` wrapper.
-- **src/lib/**: Utility functions and libraries that are not React components or hooks.
-- **src/pages/**: All route-level pages.  
-  - *Each page should have its own subdirectory if it contains more than a single file or has related logic/components.*
-- **src/App.tsx**: Sets up global providers.
-- **src/router.tsx**: Sets up routing.
-- **src/main.tsx**: Application entry point.
+- **src/i18n/**: Two files only (`config.ts`, `util.ts`).
+- **src/lib/**: Pure logic and data access, no React. `lib/data/*` are the only modules that touch the supabase client — pages use hooks, never the client directly.
+- **src/pages/**: All route-level pages. Each page in its own subdirectory (`pages/<name>/index.tsx`).
+- **supabase/functions/**: Backend functions (Deno). Deploy with the deploy tool after editing; read the token via `Deno.env.get`.
 
 **Important:**
-Whenever a new module (such as a component, hook, or utility) or a new page is added or removed, this document **must be updated immediately** to reflect the changes. Keeping this documentation up to date ensures that all collaborators have a clear understanding of the current project structure and its intended organization.
+Whenever a new module (such as a component, hook, or utility) or a new page is added or removed, this document **must be updated immediately** to reflect the changes.
 
 ## How to Add New Code
 
 ### 1. Adding a New Page
 
-- **Create a subdirectory under `src/pages/` for each new page.**
-  - Example: For a "Dashboard" page, create `src/pages/dashboard/`.
-- **Place the main page component as `index.tsx` inside the subdirectory.**
-- **Add any page-specific components or logic in the same subdirectory.**
-- **Register the new route in `src/router.tsx and generate a semantic name.**
-  - Example:
-    ```tsx
-    import Dashboard from "./pages/dashboard";
-    // ...
-    {
-      path: "/dashboard",
-      name: 'dashboard',
-      element: <Dashboard />
-    }
-    ```
+- **Create a subdirectory under `src/pages/`** for the page (`pages/<name>/index.tsx`).
+- **Register the route in `src/router.tsx`** with a semantic name (e.g. `path: "/dashboard", name: "dashboard"`).
+- If it belongs in the authenticated app, add it as a child of the `"/"` layout route; optionally add a nav item to `NAV_ITEMS` in `src/components/app-shell.tsx`.
 
 ### 2. Adding a New Component
 
-- **If you are adding a group of related components, create a subdirectory (e.g., `form/`, `charts/`).**
-- **If the component is only used by a specific page, place it in that page's subdirectory under `src/pages/`.**
-- **Each component should be focused on a single responsibility.**
-- **Small files (< 100 lines) are encouraged for a single component.**
+- Reusable components go in `src/components/` (feature-grouped subdirectories allowed).
+- Components used only by one page live in that page's subdirectory.
+- Small files (< 100 lines) are encouraged.
 
 ### 3. Adding a New Hook
 
-- **Create a new file in `src/hooks/` named after the hook (e.g., `use-feature.ts`).**
-- **Each file should export only one hook.**
-- **Hooks should be as small and focused as possible.**
+- One hook per file in `src/hooks/`, named `use-<feature>.ts`.
+- Hooks own React Query keys and mutations; they call `lib/data/*` repos.
 
 ### 4. Adding Utilities
 
-- **Add utility functions to `src/lib/`.**
-- **Group related utilities in the same file or subdirectory if needed.**
+- Pure functions go to `src/lib/` (e.g. `intervention/`, `metrics/`, `behaviors/`, `plan/`).
+- Unit tests co-locate as `*.test.ts` and run with `pnpm test` (Vitest).
 
 ### 5. Adding or Updating Languages
 
-- **Language metadata must go through `i18n.config.json`.**
-- **Do not hardcode supported languages, labels, browser detection aliases, or RTL direction lists in `src/i18n/*.ts`.**
-- **Locale content lives in `public/locales/{code}.json`** as flat dotted-key JSON; the `fallbackLng` file owns the canonical key set.
-- **Runtime code reads the manifest only through `src/i18n/util.ts`.** Adding or removing a language means editing `i18n.config.json` plus the matching `public/locales/{code}.json`; nothing in `src/i18n/` needs to change.
-- **Translations are read with the official `useTranslation()` from `react-i18next`.** No custom hook, no cast at call sites.
+- Language metadata goes through `i18n.config.json`; locale content lives in `public/locales/{code}.json` as flat dotted-key JSON. Runtime reads only through `src/i18n/util.ts`.
+- Translations are read with the official `useTranslation()` from `react-i18next`.
+
+### 6. Adding a Backend Function
+
+- Create `supabase/functions/<name>/index.ts` with `Deno.serve`, CORS preflight, and no raw SQL (use client query methods).
+- Call the deploy tool with only the function name; edit-then-redeploy for changes.
 
 ## Coding Best Practices
 
-- **One module, one responsibility:**  
-  Each file (component, hook, utility) should do one thing only.
-- **High cohesion, low coupling:**  
-  Keep related logic together and avoid unnecessary dependencies between modules.
-- **Naming conventions:**  
-  - Use `PascalCase` for components and page directories.
-  - Use `camelCase` for hooks and utility functions.
-  - Name page subdirectories and files after their route or feature.
-- **Component structure:**  
-  - Keep components small and focused.
-  - Extract subcomponents if a component grows too large.
-- **Page structure:**  
-  - Place all logic, hooks, and components specific to a page in its subdirectory.
-  - Only share code via `components/`, `hooks/`, or `lib/` if it is truly reusable.
-- **Documentation:**  
-  - Add comments for complex logic.
-  - Document the purpose of each module at the top of the file if not obvious.
-
-## Example: Adding a New "Profile" Page
-
-1. **Create a directory:**  
-   `src/pages/profile/`
-2. **Add the main page component:**  
-   `src/pages/profile/index.tsx`
-3. **Add page-specific components:**  
-   `src/pages/profile/ProfileHeader.tsx`, `src/pages/profile/ProfileDetails.tsx`
-4. **Register the route in `App.tsx`:**
-   ```tsx
-   import Profile from "./pages/profile";
-   // ...
-   <Route path="/profile" element={<Profile />} />
-   ```
-5. **If you need a reusable button, add it to `src/components/ui/button.tsx`.**
+- **One module, one responsibility** — each file does one thing.
+- **High cohesion, low coupling** — pages → hooks → `lib/data` repos → supabase client.
+- **Naming:** `PascalCase` for components and page directories; `camelCase` for hooks and utilities; route names are semantic and lowercase.
+- **Auth pattern:** register `onAuthStateChange` BEFORE `getSession()`; never pass an async callback; defer client calls inside the callback with `setTimeout(..., 0)`.
+- **Never edit generated files** `src/integrations/supabase/client.ts` and `types.ts`.
+- **Documentation:** comment complex logic; document the purpose of each module at the top of the file if not obvious.

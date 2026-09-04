@@ -148,26 +148,26 @@ Ajustes futuros (registrados, **não** executados no MVP): índices adicionais, 
 
 ## Implementation checklist
 
-- [ ] Fase 1: tokens dark premium + cor de ação em `src/index.css`/`tailwind.config.ts`
-- [ ] Fase 1: `src/components/app-shell.tsx` (bottom nav: Home, Tarefas, Dashboard, Assistente, Perfil)
-- [ ] Fase 1: rotas neutras registradas em `src/router.tsx` (auth, onboarding, tasks, stuck, session/:id, dashboard, profile, assistant)
-- [ ] Fase 1: `GuardedRoute` redireciona não-autenticado para `/auth`
-- [ ] Fase 1: `/auth` — login/cadastro/logout funcionais (auto-confirm), estado no `use-auth`
-- [ ] Fase 2: `lib/intervention` (types, catalog 8, engine) + testes passando
-- [ ] Fase 2: `lib/metrics` (initiation, LTA, completion, recovery) + testes passando
-- [ ] Fase 2: repos `lib/data/*` para profiles, tasks, sessions, events, checkins, notifications, subscriptions, catalogs, consents, push
-- [ ] Fase 3: `/onboarding` grava perfil + `procrastination_profile` por regras + `onboarding_completed`
-- [ ] Fase 3: `/tasks` CRUD real (criar com decomposição/`first_step`/`scheduled_at`, editar, concluir, excluir)
-- [ ] Fase 3: Home real: próxima ação + primeiro passo + mini check-in energia (1–5) + CTA **ESTOU TRAVADO**
-- [ ] Fase 4: `/stuck` 2 passos → intervenção da engine → `sessions`(planned) + `intervention_results` + `session_events`
-- [ ] Fase 4: `/session/:id` — iniciar, pausar, encerrar, cronômetro opcional; grava `focus_sessions`
-- [ ] Fase 4: check-in pós-sessão + recovery 5/15/30 ("salvar o dia") sem culpa
-- [ ] Fase 5: Dashboard com 4 métricas + relatório semanal + `behavior_patterns`
-- [ ] Fase 6: Perfil: consentimentos, exportação, exclusão de dados; paywall mock real; planos SE→ENTÃO + sugestão
-- [ ] Fase 7: backend function `assistant-chat` (LLM stream + crise CVV 188 + fallback por regras) e deploy
-- [ ] Fase 7: página `/assistant` com streaming (`@microsoft/fetch-event-source`) e screen de crise
-- [ ] Fase 8: `public/sw.js` + `manifest.webmanifest`; centro in-app; push (VAPID via secret); eventos analytics mínimos
-- [ ] Fase 9: `pt-BR` padrão via skill `enter_i18n`; Vitest (engine + metrics); lint/tsc/build limpos
+- [x] Fase 1: tokens dark premium + cor de ação em `src/index.css`/`tailwind.config.ts`
+- [x] Fase 1: `src/components/app-shell.tsx` (bottom nav: Home, Tarefas, Assistente, Painel, Perfil)
+- [x] Fase 1: rotas neutras registradas em `src/router.tsx` (auth, onboarding, tasks, stuck, session/:id, dashboard, profile, assistant, notifications)
+- [x] Fase 1: `GuardedRoute` redireciona não-autenticado para `/auth`
+- [x] Fase 1: `/auth` — login/cadastro/logout funcionais (auto-confirm), estado no `use-auth`
+- [x] Fase 2: `lib/intervention` (types, catalog 8, engine) + testes passando
+- [x] Fase 2: `lib/metrics` (initiation, LTA, completion, recovery) + testes passando
+- [x] Fase 2: repos `lib/data/*` para profiles, tasks, sessions, events, checkins, notifications, subscriptions, catalogs, consents, push, intentions, focus, intervention-results
+- [x] Fase 3: `/onboarding` grava perfil + `procrastination_profile` por regras + `onboarding_completed`
+- [x] Fase 3: `/tasks` CRUD real (criar com decomposição/`first_step`/`scheduled_at`, editar, concluir, excluir)
+- [x] Fase 3: Home real: próxima ação + primeiro passo + mini check-in energia (1–5) + CTA **ESTOU TRAVADO**
+- [x] Fase 4: `/stuck` 2 passos → intervenção da engine → `sessions`(planned) + `intervention_results` + `session_events`
+- [x] Fase 4: `/session/:id` — iniciar, pausar, encerrar, cronômetro opcional; grava `focus_sessions`
+- [x] Fase 4: check-in pós-sessão + recovery 5/15/30 ("salvar o dia") sem culpa
+- [x] Fase 5: Dashboard com 4 métricas + relatório semanal + `behavior_patterns`
+- [x] Fase 6: Perfil: consentimentos, exportação, exclusão de dados; paywall mock real; planos SE→ENTÃO + sugestão
+- [x] Fase 7: backend function `assistant-chat` (LLM stream + crise CVV 188 + fallback por regras) e deploy
+- [x] Fase 7: página `/assistant` com streaming (`@microsoft/fetch-event-source`) e screen de crise
+- [x] Fase 8: `public/sw.js` + `manifest.webmanifest`; centro in-app; lembrete ao agendar tarefa; eventos analytics mínimos
+- [ ] Fase 9: `pt-BR` padrão via skill `enter_i18n` (mantido `en.json` como recurso do preview; pendente); Vitest (engine + metrics); lint/tsc/build limpos
 
 ## Verification checklist
 

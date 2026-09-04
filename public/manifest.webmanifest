@@ -1,0 +1,11 @@
+{
+  "name": "VIRA - Transforme intenção em ação",
+  "short_name": "VIRA",
+  "description": "Identifique o que te trava e comece agora.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d13",
+  "theme_color": "#f59e0b",
+  "lang": "pt-BR",
+  "icons": []
+}
