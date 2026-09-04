@@ -1,214 +1,182 @@
-# ProMestre — MVP V1: app adaptativo contra procrastinação
+# VIRA — MVP V1: arquitetura, schema e execução incremental
 
 ## Contexto
 
-O usuário entregou uma especificação completa (70 seções) de um produto de intervenção comportamental contra procrastinação. A proposta central: o app **identifica o obstáculo** que impede o usuário de começar uma tarefa e **seleciona uma intervenção** (baseada em ciência comportamental / BCT Taxonomy) para reduzir a barreira e gerar o primeiro comportamento. Não é um todo-list, nem um Pomodoro, nem um habit tracker.
+O usuário (pt-BR) validou: **continuar em React + Vite, mobile-first, PWA**. Nada de React Native/Expo. Requisitos explícitos:
 
-Decisões confirmadas com o usuário:
-- **Escopo**: MVP V1 completo — arquitetura, banco (todas as entidades), auth, onboarding, tarefas, fluxo "ESTOU TRAVADO", motor de intervenção (8 intervenções), sessão/modo foco, check-ins (energia + pós-sessão), dashboard com métricas, paywall mockado.
-- **IA**: chatbot com LLM real já nesta entrega (habilitar capacidade de IA do backend).
-- **Idioma**: pt-BR padrão.
-- **Notificações**: in-app + push do navegador (service worker + backend).
+- Código **modular em TypeScript**; **backend real** (auth, banco, RLS, migrations, backend functions).
+- **Nenhuma tela ilustrativa nem botão sem função** — todo fluxo grava/ler no Enter Cloud. Única exceção: paywall (estados free/premium reais no banco, mas upgrade sem cobrança real — documentado).
+- **Apresentar arquitetura, estrutura de pastas, schema do banco e migrations ANTES de implementar telas**; depois implementar em etapas incrementais.
+- Marca **"VIRA"** (nome e texto visíveis); identificadores de código **neutros** (app, user, task, session, intervention, dashboard, auth, settings) — branding desacoplado.
+- **IA real já incluída**: chatbot LLM (decisão anterior: modelo `alibaba/qwen-3.8-max`, protocolo `openai_chat_completions`, streaming SSE), backend function no Enter Cloud.
 
-**Restrição de plataforma (documentada):** o ambiente Enter suporta somente React + Vite + Tailwind + TypeScript (web). A especificação permite alternativa equivalente mobile-first, então construímos um **web app mobile-first** (responsivo, instalável via manifest) — **não** React Native/Expo. Bloqueio de apps do sistema é impossível na web: entregamos alternativa honesta (modo foco + checklist de remoção de distrações + orientação), nunca prometendo bloqueio real.
-
-**Nome/tagline propostos:** ProMestre — "Comece antes que sua mente negocie." (provavelmente ajustável no perfil/branding futuro).
-
----
-
-## Conflitos identificados na especificação (e resoluções)
-
-1. **React Native + Expo exigido** → não suportado pelo ambiente → web app mobile-first + PWA manifest (alternativa prevista na própria spec §32).
-2. **Bloqueio de distrações nativo (Android/iOS)** → impossível na web → modo foco com checklist "remova o celular / coloque em outro cômodo" + cronômetro opcional; documentado como limitação.
-3. **Offline-first total** → MVP usa cache local (localStorage para tarefas do dia + persistência do React Query) e sincroniza com o backend; limitação documentada.
-4. **IA "não inventar evidências / não diagnosticar"** → system prompt restrito no backend function + respostas curtas orientadas à ação + screen de segurança psicológica (crise → orienta ajuda, CVV 188, interrompe fluxo normal).
-5. **Analytics mínimo vs. rastreamento de eventos** → registrar apenas eventos de produto da lista §31, sem conteúdo sensível.
-6. **Preço R$ 24,90/mês** → paywall mockado com estados free/premium e estrutura de `subscriptions` para testar preços depois.
+### Estado já concluído (não refazer)
+- Enter Cloud habilitado; **IA habilitada** (secret `AI_API_TOKEN_*` disponível via `Deno.env.get`).
+- **Migration `supabase/migrations/migration_20260903_032004000` aplicada**: 20 tabelas + RLS owner-scoped + catálogos seed (12 obstáculos, 8 intervenções) + triggers (`handle_new_user`, `ensure_subscription`, `ensure_privacy`, `set_updated_at`).
+- Auth configurado: email+password, signup habilitado, **auto-confirm ativo**, sem providers sociais.
+- `src/integrations/supabase/client.ts` + `types.ts` gerados (tipado com `Database`, contém as tabelas). **Nunca editar** (framework regrava).
+- i18n: `public/locales/en.json` é o recurso editável do preview (contém a copy "VIRA"); `src/pages/Index.tsx` é a Home atual (placeholder a ser substituído).
 
 ---
 
 ## Arquitetura
 
-- **Frontend**: React 19 + Vite + Tailwind + TypeScript, mobile-first, dark premium. React Query (dados), React Router (rotas), shadcn/ui.
-- **Backend**: Enter Cloud — Postgres, Auth, RLS, backend functions (chat IA, push).
-- **IA**: backend function `chat` com LLM (protocolo do skill `enter_llm_integration`; seleção de modelo com o usuário antes de codar), fallback por regras se o LLM falhar.
-- **Motor de intervenção**: TypeScript puro e determinístico (regras), testável, em `src/lib/intervention/`.
-- **Métricas**: funções puras em `src/lib/metrics/` (LTA, taxa de iniciação, taxa de conclusão, recovery rate) + views SQL agregadas para o dashboard.
-- **Analytics**: infra já existente (`@enter-pro/analytics-sdk`, `src/analytics.ts`); instrumentar eventos da spec §31 via skill `enter_analytics`.
-- **i18n**: infra já existente (i18next); adicionar **pt-BR como fallback/idioma padrão** (editar `i18n.config.json` + `public/locales/pt-BR.json`; workflow do skill `enter_i18n`).
+```
+┌─────────────────────────────────────────────────────────────┐
+│ UI (mobile-first)  pages/ · components/ · hooks/            │
+│   React Router · React Query · shadcn/ui · Tailwind tokens  │
+├─────────────────────────────────────────────────────────────┤
+│ Domínio (TS puro, sem UI, testável)                         │
+│   lib/intervention · lib/metrics · lib/behaviors · lib/plan │
+├─────────────────────────────────────────────────────────────┤
+│ Dados (acesso tipado)  lib/data/*  sobre o client supabase  │
+│   RLS garante isolamento por dono no banco                  │
+├─────────────────────────────────────────────────────────────┤
+│ Backend (Enter Cloud)                                       │
+│   Postgres (tabelas+RLS+triggers) · Auth · backend funcs    │
+│   functions/assistant-chat  functions/send-push             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Princípios:
+- **Camada de domínio independente da UI**: engine de intervenção e métricas são funções puras (`lib/`), testáveis com Vitest.
+- **Toda persistência via client tipado do supabase** (RLS no banco, nunca no cliente). Sem SQL cru em backend function.
+- **Sem mock funcional**: cada tela usa queries/mutations reais. Botões sempre executam ações reais (ou navegam).
 
 ---
 
-## Banco de dados (migrations + RLS + seeds)
+## Estrutura de pastas (a criar)
 
-Todas as tabelas com RLS (dono = `auth.uid()`), criadas via ferramenta de migração do skill `enter_cloud`. Trigger `handle_new_user` cria `profiles`.
+```
+src/
+  main.tsx / App.tsx / router.tsx        # entrada, providers, rotas (neutras)
+  index.css                              # tokens dark premium + cor de ação
+  analytics.ts                           # bootstrap do @enter-pro/analytics-sdk
+  lib/
+    utils.ts                             # cn() (existe)
+    intervention/  types.ts · catalog.ts · engine.ts · engine.test.ts
+    metrics/       metrics.ts · metrics.test.ts
+    behaviors/     patterns.ts           # insights por regras (melhor horário, top obstáculo…)
+    plan/          suggestions.ts        # sugestão de planos SE→ENTÃO
+    data/          profiles.ts · tasks.ts · sessions.ts · events.ts
+                   checkins.ts · notifications.ts · subscriptions.ts
+                   patterns.ts · catalogs.ts · consents.ts · push.ts
+    ai/            chat.ts               # cliente SSE (fetch-event-source)
+  hooks/
+    use-auth.ts · use-profile.ts · use-tasks.ts · use-sessions.ts
+    use-ai-chat.ts · use-checkin.ts · use-dashboard.ts · use-push.ts
+  components/
+    app-shell.tsx                        # bottom nav mobile + header
+    guarded-route.tsx                    # redireciona não-autenticado para /auth
+    ui/                                  # shadcn (existe) + variantes novas
+  pages/
+    Index.tsx                            # Home real (próxima ação + "ESTOU TRAVADO")
+    auth/index.tsx                       # login/cadastro (email+password)
+    onboarding/index.tsx                 # perfil + tipo de procrastinação por regras
+    tasks/index.tsx · tasks/new.tsx      # CRUD com decomposição + primeiro passo
+    stuck/index.tsx                      # fluxo 2 passos → intervenção → sessão
+    session/[id].tsx                     # modo foco + check-in pós-sessão + recovery
+    dashboard/index.tsx                  # métricas + relatório semanal
+    profile/index.tsx                    # privacidade · planos (paywall) · SE→ENTÃO
+    assistant/index.tsx                  # chat IA
+    NotFound.tsx                         # existe
+supabase/
+  functions/assistant-chat/index.ts      # chat LLM (stream) + crise + fallback
+  functions/send-push/index.ts           # web push (VAPID via secret)
+public/
+  sw.js                                  # service worker (push + notificationclick)
+  manifest.webmanifest                   # PWA instalável
+  locales/en.json                        # recurso i18n editável (copy VIRA, pt-BR)
+```
 
-| Tabela | Colunas principais |
+---
+
+## Schema do banco (JÁ migrado — nenhuma migration nova no MVP)
+
+`supabase/migrations/migration_20260903_032004000` cria 20 tabelas. RLS em todas: owner = `user_id = auth.uid()`; catálogos `obstacles`/`interventions` com policy de leitura para `authenticated`.
+
+| Tabela | Papel no fluxo |
 |---|---|
-| `profiles` | user_id (PK=FK auth), nome, timezone, onboarded_at, plano (free/premium) |
-| `goals` | user_id, título, categoria (study/training/project/reading/organizing/other), alvo |
-| `tasks` | user_id, goal_id?, título, categoria, first_step, scheduled_at, duration_min, status, prioridade |
-| `sessions` | user_id, task_id?, planned_start, actual_start, status (planned/started/completed/abandoned/recovered), duration_planned, duration_actual, obstacle_code, intervention_code |
-| `session_events` | session_id, type (task_started/completed/abandoned/recovery_*), occurred_at |
-| `obstacles` | code, label, group (seed de 12) |
-| `interventions` | code, name, mechanism, indication, contraindication, context, duration, description (seed de 8) |
-| `intervention_results` | session_id, intervention_code, shown_at, accepted, outcome |
-| `implementation_intentions` | user_id, if_part, then_part, trigger, ativo |
-| `energy_checkins` | user_id, level (1–5), context, checked_at |
-| `focus_sessions` | session_id, started_at, ended_at, duration |
-| `behavior_patterns` | user_id, pattern_type, data (jsonb), generated_at |
-| `experiments` | user_id, name, arm_a, arm_b, status (cria a estrutura; UI em iteração futura) |
-| `experiment_assignments` | experiment_id, session_id, arm |
-| `notifications` | user_id, type, title, body, sent_at, opened_at, status |
-| `push_subscriptions` | user_id, endpoint, keys, created_at |
-| `subscriptions` | user_id, plan, status, started_at, trial_end? |
-| `consents` | user_id, type, granted_at, version |
-| `privacy_settings` | user_id, settings (jsonb) |
-| `audit_logs` | user_id, action, created_at |
+| `profiles` | nome, horários, dias de trabalho, meta principal, `procrastination_profile`, `onboarding_completed` |
+| `goals` | metas (categoria) |
+| `tasks` | título, `first_step`, `scheduled_at`, `duration_min`, status |
+| `sessions` | `planned_start`/`actual_start`, status, `obstacle_code`, `intervention_code`, `energy` |
+| `session_events` | `task_started`/`completed`/`abandoned`/`recovery_*` (base das métricas) |
+| `obstacles` (seed 12) | catálogo do passo ② do fluxo travado |
+| `interventions` (seed 8) | catálogo da engine |
+| `intervention_results` | o que foi mostrado/aceito → personalização |
+| `implementation_intentions` | planos SE→ENTÃO |
+| `energy_checkins` | energia 1–5 + contexto |
+| `focus_sessions` | duração real do modo foco |
+| `behavior_patterns` | insights gerados por regras |
+| `experiments` / `experiment_assignments` | estrutura A/B (UI futura; tabelas prontas) |
+| `notifications` / `push_subscriptions` | centro in-app + push |
+| `subscriptions` | free/premium (paywall mock) |
+| `consents` / `privacy_settings` | LGPD |
+| `audit_logs` | trilha de ações |
 
-Seeds: 12 obstacles + 8 interventions (catálogo completo com mecanismo/indicação/contraindicação).
+Ajustes futuros (registrados, **não** executados no MVP): índices adicionais, view SQL agregada de métricas, coluna de expiração de push.
 
 ---
 
-## Motor de intervenção (regras → 8 intervenções)
+## Decisões-chave
 
-`src/lib/intervention/catalog.ts` + `engine.ts` + `types.ts`. Mapeamento obstáculo → intervenção:
-
-| Obstáculo | Intervenção |
-|---|---|
-| tarefa grande / complexidade | MICRO-START (5–15 min) + decompor |
-| não sei por onde começar | PRIMEIRO PASSO (ação física e observável) |
-| celular / distraído | REMOÇÃO DE DISTRAÇÃO (modo foco + checklist) |
-| cansado / energia baixa | MICRO-START (reduzir demanda, sessão mínima) |
-| sem vontade | MICRO-START (não depender de motivação) |
-| perfeccionismo | REESTRUTURAÇÃO COGNITIVA BREVE (versão mínima aceitável) |
-| ansioso / medo de errar | REESTRUTURAÇÃO COGNITIVA BREVE + PRIMEIRO PASSO |
-| ambiente inadequado | REESTRUTURAÇÃO (alterar ambiente) |
-| horário inadequado | REPLANEJAMENTO (mover atividade) |
-| falhei antes | RECOVERY (recuperar sessão, sem punição) |
-
-Saída da engine: `{ intervention, message, ctaLabel, firstStep?, sessionPlan? }` em pt-BR. Cada resultado gravado em `intervention_results` (alimenta personalização futura e `behavior_patterns`).
+- **Auth**: email+password (login/cadastro), auto-confirm; padrão `onAuthStateChange` registrado **antes** de checar sessão; `signUp` com `emailRedirectTo = origin`; rotas protegidas por `GuardedRoute`.
+- **Engine de intervenção** (`lib/intervention`): TS puro, determinística; mapa obstáculo→intervenção (task_too_big/no_start_point/tired/no_motivation → micro_start; phone/distracted → distraction_removal; anxious/fear_of_failure/perfectionism → cognitive_restructuring; no_environment → restructuring; bad_time → replan; other → micro_start) + mensagens/CTA pt-BR; testes unitários.
+- **Métricas** (`lib/metrics`): funções puras — taxa de iniciação (started/planned), LTA (actual_start − planned_start), taxa de conclusão, recovery rate; dashboard consome `lib/data` + regras de `behavior_patterns`.
+- **Paywall**: estados reais em `subscriptions` (free/premium via botão "assinar" que grava premium + `audit_logs`); **sem cobrança real** — única exceção de mock, documentada na tela.
+- **IA**: backend function `assistant-chat` (protocolo `openai_chat_completions`, model `alibaba/qwen-3.8-max`, streaming SSE); system prompt pt-BR curto orientado à ação, sem diagnóstico; **screen de crise** (frases de sofrimento → orienta ajuda profissional/CVV 188 e encerra fluxo); **fallback por regras** se o LLM falhar. Frontend: `@microsoft/fetch-event-source` (nova dependência) + hook `use-ai-chat` + página `/assistant`.
+- **Notificações**: centro in-app (`notifications`) + lembretes adaptativos (se ignora → reduz frequência); push via `sw.js` + `push_subscriptions` + backend function `send-push` (VAPID via secret — a pedir via modal); limitação iOS documentada.
+- **i18n**: `en.json` continua sendo o recurso editável do preview (fluxo atual do usuário não quebra). Ao final, `enter_i18n` skill adiciona `pt-BR` como idioma padrão sem quebrar o preview.
+- **Analytics**: eventos mínimos da spec §31 via `@enter-pro/analytics-sdk` (skill `enter_analytics`), sem conteúdo sensível.
 
 ---
 
-## Fluxo de navegação (rotas)
+## Fases incrementais (cada fase: lint + tsc + build + verificação visual mobile)
 
-`/` Home → `#estou-travado` é o fluxo prioritário da spec (§66):
-
-- `/` **Home**: "O que devo fazer agora?" + próxima ação + primeiro passo + [COMEÇAR] + botão grande **[ESTOU TRAVADO]** + próximas atividades + mini check-in de energia
-- `/auth` login/cadastro
-- `/onboarding` onboarding curto (~5–8 perguntas; perfil de procrastinação gerado)
-- `/stuck` fluxo "ESTOU TRAVADO": ① atividade → ② obstáculo → ③ intervenção + [COMEÇAR]
-- `/session/:id` modo foco (só a tarefa atual, cronômetro opcional, pausar/encerrar) → check-in pós-sessão
-- `/tasks` lista + criação com decomposição ("o que exatamente você vai fazer?") + primeiro passo
-- `/dashboard` métricas: taxa de iniciação, LTA, conclusão, recovery + **relatório semanal** ("Seu padrão esta semana")
-- `/profile` configurações: privacidade (consentimentos, exportação/exclusão de dados), planos (paywall mock), planos SE→ENTÃO (implementation intentions), notificações
-- `/assistant` chatbot IA (curto, orientado à ação, com screen de crise)
-- Admin dashboard, experimentos ("Teste seu método"), bloqueio nativo: **adiados** (roadmap V1.1/V2), documentados como fora do escopo — sem botões "em breve" falsos.
-
----
-
-## Componentes principais
-
-`AppShell` (bottom nav mobile), `StuckFlow` (stepper), `InterventionCard`, `SessionView` (modo foco), `EnergyPicker`, `TaskItem`/`TaskForm` (com decomposição), `MetricCard`/`MetricGrid`, `WeeklyReport`, `PaywallSheet`, `AssistantChat`, `NotificationCenter`. Páginas em subpastas por feature (convenção do `CodeGuideline.md`).
-
----
-
-## IA — chatbot
-
-- Habilitar capacidade de IA (`enable_ai_capability`) após Enter Cloud; carregar skill `enter_llm_integration` e **apresentar seleção de modelo ao usuário** antes de codar.
-- Backend function `chat`: system prompt pt-BR curto e orientado à ação (nunca motivacional genérico, nunca diagnóstico); detecção de frases de crise → resposta de segurança (orienta ajuda profissional, CVV 188, encerra o fluxo normal); fallback por regras se o LLM falhar.
-- Sem persistência de conversa no MVP (minimização de dados), documentado.
-
-## Notificações
-
-- `public/sw.js` (service worker: push + notificationclick) + manifest PWA.
-- In-app: centro de notificações em `notifications` + lembretes adaptativos ("você planejou estudar às 21h; primeiro passo: abrir a aula 3"; se ignora muitas, reduzir frequência).
-- Push: subscription no navegador (`push_subscriptions`) + backend function `send-push` (Web Push/VAPID). Chaves VAPID via `supabase_add_secret` (modal ao usuário). Limitação iOS Safari documentada.
-
----
-
-## Design system
-
-Tokens em `src/index.css` + `tailwind.config.ts` (dark premium, mobile-first):
-- Fundo escuro (`--background` ~224 22% 5%), `--card`/`--popover` derivados; `--foreground` alto contraste.
-- Cor de ação `--primary` âmbar/laranja (gatilho de ação, não "gamificação"), com `--primary-foreground` escuro (AA).
-- Gradientes e sombras como tokens (`--gradient-primary`, `--shadow-glow`); `--radius` maior; tipografia com fonte variável (adicionar via dependência, fallback system stack).
-- Estados: `Estou travado` em destaque (variação de botão), nunca texto branco em variante outline (pitfall conhecido).
-
----
-
-## Fases de execução
-
-1. Habilitar **Enter Cloud** (`supabase_enable`) → carregar skill `enter_cloud`; habilitar **capacidade de IA** (`enable_ai_capability`) → skill `enter_llm_integration`.
-2. Migrations (todas as tabelas + RLS + seeds) + cliente Supabase (`src/integrations/supabase/client.ts`).
-3. Auth (login/cadastro/logout, estado de sessão, rotas protegidas).
-4. Design system + AppShell + roteamento.
-5. Onboarding (perfil de procrastinação por regras).
-6. Tarefas (decomposição + primeiro passo + agendamento).
-7. Home (próxima ação, energia, "Estou travado").
-8. Fluxo "ESTOU TRAVADO" (2 passos + eventos de analytics).
-9. Motor de intervenção (engine + catálogo + testes unitários).
-10. Sessão/modo foco + check-ins (pós-sessão, energia).
-11. Dashboard + relatório semanal (métricas: iniciação, LTA, conclusão, recovery; `behavior_patterns`).
-12. Paywall mockado (free/premium, `subscriptions`).
-13. Chatbot IA (backend function + UI + screen de crise + fallback).
-14. Notificações (in-app + service worker + push; VAPID via secrets).
-15. Perfil/privacidade (consentimentos, exportação/exclusão de dados, LGPD).
-16. Analytics (eventos da spec §31 via skill `enter_analytics`).
-17. i18n pt-BR padrão (skill `enter_i18n`).
-18. Testes, lint, build, polimento visual.
-
----
-
-## Riscos técnicos
-
-- Web não bloqueia apps → limitação honesta já prevista.
-- Push web: depende de permissão do usuário e VAPID; iOS Safari não suporta bem → fallback in-app.
-- IA: custo por uso e latência; fallback por regras garante funcionamento.
-- Template sem test runner → adicionar Vitest para testar engine e métricas.
-- Offline: cache parcial apenas (localStorage/React Query persist).
+1. **Fundação**: tokens dark premium + cor de ação âmbar em `index.css`/`tailwind.config.ts`; `AppShell` (bottom nav mobile); rotas neutras em `router.tsx`; `GuardedRoute`; página `/auth` funcional (login/cadastro/logout); estado de sessão no React Query (`use-auth`).
+2. **Domínio + dados**: `lib/intervention/*` + testes; `lib/metrics/*` + testes; repos `lib/data/*` tipados (sem UI nova).
+3. **Onboarding → Tarefas → Home**: `/onboarding` grava `profiles` e gera `procrastination_profile` por regras; `/tasks` CRUD real (decomposição + `first_step` + `scheduled_at`); Home mostra próxima ação + primeiro passo + check-in de energia + CTA **ESTOU TRAVADO**.
+4. **Fluxo travado → Sessão**: `/stuck` (atividade → obstáculo → intervenção → CTA começar) cria `sessions`(planned)+`intervention_results`; `/session/:id` modo foco (cronômetro opcional, pausar/encerrar) grava `focus_sessions` + `session_events`; check-in pós-sessão; recovery "salvar o dia" (5/15/30 min) sem culpa.
+5. **Dashboard**: taxa de iniciação, LTA, conclusão, recovery; relatório semanal; `behavior_patterns` (melhor horário, top obstáculo, duração ideal) gerados e exibidos.
+6. **Perfil/privacidade/paywall**: consentimentos e exportação/exclusão de dados (LGPD); tela de planos (paywall mock real); planos SE→ENTÃO (`implementation_intentions`) com sugestão por regras.
+7. **Assistente IA**: dependência `@microsoft/fetch-event-source`; backend function `assistant-chat` + deploy; página `/assistant` com streaming, screen de crise e fallback.
+8. **Notificações + analytics**: `sw.js` + PWA manifest; centro in-app; push (VAPID); instrumentação mínima via skill `enter_analytics`.
+9. **Encerramento**: `pt-BR` padrão via skill `enter_i18n`; Vitest rodando; `pnpm lint` + `pnpm exec tsc --noEmit` + `pnpm run build` limpos; polimento visual (mobile 390 + desktop 1280).
 
 ---
 
 ## Implementation checklist
 
-- [ ] `supabase_enable` aprovado pelo usuário; skill `enter_cloud` carregado
-- [ ] `enable_ai_capability` aprovado; skill `enter_llm_integration` carregado; **seleção de modelo apresentada e confirmada com o usuário**
-- [ ] Migrations criadas para todas as entidades da spec (20 tabelas) com RLS owner-scoped e trigger de `profiles`
-- [ ] Seeds de 12 obstacles e 8 interventions com mecanismo/indicação/contraindicação
-- [ ] Cliente Supabase em `src/integrations/supabase/client.ts` (sem edição manual posterior)
-- [ ] Auth: login, cadastro, logout, guard de rotas, estado de sessão no React Query
-- [ ] Design tokens em `index.css`/`tailwind.config.ts` (dark premium, cor de ação, mobile-first)
-- [ ] `AppShell` com bottom nav mobile e rotas registradas em `src/router.tsx`
-- [ ] Onboarding funcional (grava perfil, gera tipo de procrastinação por regras, marca onboarded)
-- [ ] Tarefas: criação com decomposição + primeiro passo + horário; CRUD real no backend
-- [ ] Home: próxima ação, primeiro passo, check-in de energia (1–5), CTA "ESTOU TRAVADO"
-- [ ] Fluxo `/stuck`: ① atividade ② obstáculo ③ intervenção → cria `session` (status planned) e grava eventos
-- [ ] Engine de intervenção em `src/lib/intervention/` (catálogo + regras obstáculo→intervenção) + testes unitários
-- [ ] Sessão/modo foco `/session/:id`: tarefa atual, cronômetro opcional, pausar/encerrar, check-in pós-sessão (começou? concluiu? / o que aconteceu?)
-- [ ] Salvar o dia (recovery): sessões perdidas geram oferta 5/15/30 min ou encerrar conscientemente, sem culpa/streak
-- [ ] Dashboard: taxa de iniciação, LTA (planejado→início), conclusão, recovery; relatório semanal ("Seu padrão esta semana")
-- [ ] `behavior_patterns`: insights por regras (melhor horário, maior obstáculo, duração com maior iniciação) gravados e exibidos
-- [ ] Implementation intentions (planos SE→ENTÃO): CRUD + sugestão por regras a partir de padrões
-- [ ] Paywall mock: estados free/premium, tela de assinatura, `subscriptions` (sem pagamento real)
-- [ ] Chatbot IA: backend function `chat` (LLM + screen de crise + fallback por regras) e UI `/assistant`
-- [ ] Notificações: service worker, centro in-app, lembretes adaptativos, push (VAPID via secrets) com fallback honesto
-- [ ] Perfil/privacidade: consentimentos, exportação de dados, exclusão de conta/dados, política e termos
-- [ ] Analytics: eventos da spec §31 instrumentados via skill `enter_analytics` (mínimos, sem conteúdo sensível)
-- [ ] i18n: pt-BR como idioma padrão (`i18n.config.json` + `public/locales/pt-BR.json`)
-- [ ] Vitest adicionado; testes de engine + métricas passando
-- [ ] `pnpm lint` e `pnpm run build` passando
-- [ ] Limitações documentadas (plataforma web, bloqueio de apps, offline, push iOS) — sem botões "em breve" falsos
+- [ ] Fase 1: tokens dark premium + cor de ação em `src/index.css`/`tailwind.config.ts`
+- [ ] Fase 1: `src/components/app-shell.tsx` (bottom nav: Home, Tarefas, Dashboard, Assistente, Perfil)
+- [ ] Fase 1: rotas neutras registradas em `src/router.tsx` (auth, onboarding, tasks, stuck, session/:id, dashboard, profile, assistant)
+- [ ] Fase 1: `GuardedRoute` redireciona não-autenticado para `/auth`
+- [ ] Fase 1: `/auth` — login/cadastro/logout funcionais (auto-confirm), estado no `use-auth`
+- [ ] Fase 2: `lib/intervention` (types, catalog 8, engine) + testes passando
+- [ ] Fase 2: `lib/metrics` (initiation, LTA, completion, recovery) + testes passando
+- [ ] Fase 2: repos `lib/data/*` para profiles, tasks, sessions, events, checkins, notifications, subscriptions, catalogs, consents, push
+- [ ] Fase 3: `/onboarding` grava perfil + `procrastination_profile` por regras + `onboarding_completed`
+- [ ] Fase 3: `/tasks` CRUD real (criar com decomposição/`first_step`/`scheduled_at`, editar, concluir, excluir)
+- [ ] Fase 3: Home real: próxima ação + primeiro passo + mini check-in energia (1–5) + CTA **ESTOU TRAVADO**
+- [ ] Fase 4: `/stuck` 2 passos → intervenção da engine → `sessions`(planned) + `intervention_results` + `session_events`
+- [ ] Fase 4: `/session/:id` — iniciar, pausar, encerrar, cronômetro opcional; grava `focus_sessions`
+- [ ] Fase 4: check-in pós-sessão + recovery 5/15/30 ("salvar o dia") sem culpa
+- [ ] Fase 5: Dashboard com 4 métricas + relatório semanal + `behavior_patterns`
+- [ ] Fase 6: Perfil: consentimentos, exportação, exclusão de dados; paywall mock real; planos SE→ENTÃO + sugestão
+- [ ] Fase 7: backend function `assistant-chat` (LLM stream + crise CVV 188 + fallback por regras) e deploy
+- [ ] Fase 7: página `/assistant` com streaming (`@microsoft/fetch-event-source`) e screen de crise
+- [ ] Fase 8: `public/sw.js` + `manifest.webmanifest`; centro in-app; push (VAPID via secret); eventos analytics mínimos
+- [ ] Fase 9: `pt-BR` padrão via skill `enter_i18n`; Vitest (engine + metrics); lint/tsc/build limpos
 
 ## Verification checklist
 
-- [ ] Build: `pnpm run build` conclui sem erros; lint sem erros; testes unitários passam (`pnpm test`)
-- [ ] Positivo: cadastro → onboarding → criar tarefa com primeiro passo → Home mostra próxima ação → "ESTOU TRAVADO" → obstáculo "tarefa grande" → intervenção MICRO-START com CTA → sessão inicia → check-in pós-sessão grava → dashboard mostra taxa de iniciação/LTA/recovery
-- [ ] Positivo: chat IA responde curto e orientado à ação; frase de crise ("não aguento mais") → resposta de segurança (CVV 188), fluxo normal interrompido
-- [ ] Positivo: paywall mostra premium bloqueado em conta free e desbloqueia em premium (mock)
-- [ ] Negativo/default: usuário não logado redirecionado para `/auth`; rotas protegidas bloqueiam
-- [ ] Negativo/default: sessão perdida → oferta de recuperação sem culpa; streak não zerado/não exibido como métrica principal
-- [ ] Fronteira: energia 1/5 → sessão mínima sugerida; energia 5/5 → sessão normal; notificações ignoradas → frequência reduzida
-- [ ] Fronteira: RLS — query direta de outro usuário retorna vazio; SQL de tabelas `auth`/`storage` intocadas
-- [ ] Manual no preview: fluxo mobile (bottom nav), dark theme, contraste AA, texto 100% pt-BR (sem chaves i18n vazadas)
+- [ ] Build: `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm run build` e `pnpm test` sem erros
+- [ ] Positivo: cadastro → onboarding → criar tarefa com primeiro passo → Home mostra próxima ação → "ESTOU TRAVADO" → obstáculo → intervenção → sessão inicia → check-in grava → dashboard mostra taxa de iniciação/LTA/recovery
+- [ ] Positivo: chat IA responde em stream curto e orientado à ação; frase de crise → resposta de segurança (CVV 188) e fluxo interrompido
+- [ ] Positivo: paywall — conta free vê premium bloqueado; "assinar" (mock) grava `subscriptions.plan = premium` e desbloqueia
+- [ ] Negativo/default: não logado → redirecionado a `/auth`; rotas protegidas bloqueiam
+- [ ] Negativo/default: falha do LLM → fallback por regras responde sem quebrar
+- [ ] Fronteira: energia 1/5 → sessão mínima sugerida; 5/5 → sessão normal
+- [ ] Fronteira: RLS — outro usuário autenticado não lê dados alheios (select retorna vazio)
+- [ ] Manual no preview: fluxo mobile (bottom nav), dark theme, contraste AA, copy pt-BR direta e adulta (sem chaves i18n vazadas, sem emojis)
