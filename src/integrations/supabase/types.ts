@@ -3949,6 +3949,18 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "sessions_intervention_code_fkey"
+            columns: ["intervention_code"]
+            referencedRelation: "interventions"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "sessions_obstacle_code_fkey"
+            columns: ["obstacle_code"]
+            referencedRelation: "obstacles"
+            referencedColumns: ["code"]
+          },
+          {
             foreignKeyName: "sessions_task_id_fkey"
             columns: ["task_id"]
             referencedRelation: "tasks"

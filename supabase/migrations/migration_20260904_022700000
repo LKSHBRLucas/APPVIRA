@@ -1,0 +1,14 @@
+-- ============ RELATIONS: sessions -> catalogs ============
+-- Add referential integrity between behavioral records and the catalog
+-- tables. Codes written by the intervention engine come from the same
+-- catalog, so these FKs are safe to enforce.
+-- Note: intervention_results.intervention_code already references
+-- interventions(code) from the original migration; only sessions needed it.
+
+alter table public.sessions
+  add constraint sessions_obstacle_code_fkey
+  foreign key (obstacle_code) references public.obstacles(code);
+
+alter table public.sessions
+  add constraint sessions_intervention_code_fkey
+  foreign key (intervention_code) references public.interventions(code);
