@@ -1,6 +1,7 @@
 import { Download, LogOut, Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -153,6 +154,13 @@ export default function ProfilePage() {
 
       {tab === "intentions" && (
         <div className="space-y-4">
+          <Button asChild variant="outline" className="w-full">
+            <Link to="/plans">
+              <Plus className="h-4 w-4" />
+              {t("profile.iiFromTask")}
+            </Link>
+          </Button>
+
           <Card className="border-border/60 bg-card/80">
             <CardHeader>
               <CardTitle className="text-lg">{t("profile.iiTitle")}</CardTitle>

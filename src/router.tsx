@@ -6,6 +6,7 @@ import DashboardPage from "./pages/dashboard";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import OnboardingPage from "./pages/onboarding";
+import PlansPage from "./pages/plans";
 import ProfilePage from "./pages/profile";
 import SessionPage from "./pages/session";
 import StuckPage from "./pages/stuck";
@@ -71,6 +72,11 @@ export const routers = [
         path: "profile",
         name: "profile",
         element: <ProfilePage />,
+      },
+      {
+        path: "plans",
+        name: "plans",
+        element: <PlansPage />,
       },
       {
         path: "assistant",
