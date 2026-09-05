@@ -11,6 +11,17 @@ export interface ProfileRow {
   main_goal: string | null;
   procrastination_profile: string | null;
   onboarding_completed: boolean;
+  /** Free-form preferences (e.g. default_focus_min) — never user-visible raw JSON. */
+  preferences: Record<string, unknown> | null;
+}
+
+/** Sanitized default focus duration from profile preferences, clamped 5–120. */
+export function defaultFocusMin(profile: ProfileRow | null): number {
+  const value = profile?.preferences?.default_focus_min;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.min(120, Math.max(5, Math.round(value)));
+  }
+  return 25;
 }
 
 export async function getProfile(userId: string): Promise<ProfileRow | null> {

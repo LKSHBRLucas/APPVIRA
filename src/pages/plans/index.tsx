@@ -7,10 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { EmptyState } from "@/components/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { useIntentions } from "@/hooks/use-intentions";
 import { useTasks } from "@/hooks/use-tasks";
+import { handleError } from "@/lib/feedback";
 import { buildImplementationPlan } from "@/lib/plan/suggestions";
 import type { ObstacleCode } from "@/lib/intervention/types";
 import { cn } from "@/lib/utils";
@@ -70,6 +73,8 @@ export default function PlansPage() {
       toast.success(t("plans.saved"));
       setIiIf("");
       setIiThen("");
+    } catch (error) {
+      handleError(t, "plans.save", error);
     } finally {
       setSaving(false);
     }
@@ -103,7 +108,7 @@ export default function PlansPage() {
                       setIiThen("");
                     }}
                     className={cn(
-                      "rounded-full border px-3 py-1.5 text-xs transition-colors",
+                      "rounded-full border px-3 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       taskId === task.id
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border bg-card text-muted-foreground",
@@ -180,14 +185,11 @@ export default function PlansPage() {
         <CardContent>
           {isLoading ? (
             <div className="space-y-2">
-              {[0, 1].map((i) => (
-                <div key={i} className="h-20 animate-pulse rounded-lg bg-muted" />
-              ))}
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
             </div>
           ) : intentions.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              {t("plans.empty")}
-            </p>
+            <EmptyState icon={Save} title={t("plans.empty")} />
           ) : (
             <div className="space-y-2">
               {intentions.map((intention) => (

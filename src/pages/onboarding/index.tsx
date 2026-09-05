@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
 import { useTasks } from "@/hooks/use-tasks";
+import { defaultFocusMin } from "@/lib/data/profiles";
+import { handleError } from "@/lib/feedback";
 import { cn } from "@/lib/utils";
 
 const STEPS = ["name", "firstTask"] as const;
@@ -47,20 +49,26 @@ export default function OnboardingPage() {
 
     setSaving(true);
 
-    // Create the first task right here — first step included.
-    await createTask.mutateAsync({
-      title: taskTitle.trim(),
-      category: "other",
-      first_step: firstStep.trim() || null,
-      scheduled_at: null,
-      duration_min: 25,
-    });
+    try {
+      // Create the first task right here — first step included.
+      await createTask.mutateAsync({
+        title: taskTitle.trim(),
+        category: "other",
+        first_step: firstStep.trim() || null,
+        scheduled_at: null,
+        duration_min: defaultFocusMin(profile),
+      });
 
-    // Mark onboarding complete.
-    await update.mutateAsync({
-      name: name.trim(),
-      onboarding_completed: true,
-    });
+      // Mark onboarding complete.
+      await update.mutateAsync({
+        name: name.trim(),
+        onboarding_completed: true,
+      });
+    } catch (error) {
+      handleError(t, "onboarding.finish", error);
+      setSaving(false);
+      return;
+    }
 
     setSaving(false);
     navigate("/", { replace: true });

@@ -20,6 +20,7 @@ import { replaceSessionObstacles } from "@/lib/data/session-obstacles";
 import { pickPersonalized } from "@/lib/intervention/personalized";
 import type { InterventionPlan, ObstacleCode } from "@/lib/intervention/types";
 import { buildImplementationPlan } from "@/lib/plan/suggestions";
+import { handleError } from "@/lib/feedback";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
@@ -198,48 +199,53 @@ export default function StuckPage() {
 
   /** Real calls: tasks.insert (note) + sessions.update + intervention_results.insert. */
   const handleStart = async () => {
-    if (!plan || !sessionId) return;
+    if (!plan || !sessionId || starting) return;
     setStarting(true);
 
-    let resolvedTaskId = taskId;
-    if (!resolvedTaskId && note.trim()) {
-      const task = await createTask(user!.id, {
-        title: note.trim(),
-        category: "other",
-        first_step: plan.firstStep ?? null,
-        scheduled_at: null,
-        duration_min: plan.intervention.durationMin,
+    try {
+      let resolvedTaskId = taskId;
+      if (!resolvedTaskId && note.trim()) {
+        const task = await createTask(user!.id, {
+          title: note.trim(),
+          category: "other",
+          first_step: plan.firstStep ?? null,
+          scheduled_at: null,
+          duration_min: plan.intervention.durationMin,
+        });
+        resolvedTaskId = task.id;
+      }
+
+      await patch.mutateAsync({
+        id: sessionId,
+        patch: {
+          intervention_code: plan.intervention.code,
+          task_id: resolvedTaskId,
+        },
       });
-      resolvedTaskId = task.id;
-    }
 
-    await patch.mutateAsync({
-      id: sessionId,
-      patch: {
-        intervention_code: plan.intervention.code,
+      // accepted=true → the user saw the intervention and pressed start.
+      await recordInterventionResult(user!.id, {
+        session_id: sessionId,
         task_id: resolvedTaskId,
-      },
-    });
-
-    // accepted=true → the user saw the intervention and pressed start.
-    await recordInterventionResult(user!.id, {
-      session_id: sessionId,
-      task_id: resolvedTaskId,
-      intervention_code: plan.intervention.code,
-      accepted: true,
-      outcome: "started",
-    });
-
-    trackEvent("intervention_applied", {
-      eventType: "custom",
-      properties: {
         intervention_code: plan.intervention.code,
-        duration_min: plan.intervention.durationMin,
-      },
-    });
+        accepted: true,
+        outcome: "started",
+      });
 
-    setStarting(false);
-    navigate(`/session/${sessionId}`, { replace: true });
+      trackEvent("intervention_applied", {
+        eventType: "custom",
+        properties: {
+          intervention_code: plan.intervention.code,
+          duration_min: plan.intervention.durationMin,
+        },
+      });
+
+      navigate(`/session/${sessionId}`, { replace: true });
+    } catch (error) {
+      handleError(t, "stuck.start", error);
+    } finally {
+      setStarting(false);
+    }
   };
 
   const goBack = () => {
@@ -302,7 +308,7 @@ export default function StuckPage() {
                     type="button"
                     onClick={() => setTaskId(task.id)}
                     className={cn(
-                      "shrink-0 rounded-full border px-3 py-1.5 text-xs transition-colors",
+                      "shrink-0 rounded-full border px-3 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       taskId === task.id
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border bg-card text-muted-foreground",
@@ -333,7 +339,7 @@ export default function StuckPage() {
                   onClick={() => toggleObstacle(obstacle.code as ObstacleCode)}
                   disabled={isFull}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors",
+                    "flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     isSelected
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border bg-card hover:bg-muted",

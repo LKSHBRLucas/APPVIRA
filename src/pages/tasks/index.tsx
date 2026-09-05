@@ -1,9 +1,11 @@
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Check, Circle, Plus, Trash2 } from "lucide-react";
+import { Check, Circle, ListTodo, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 
@@ -35,19 +37,21 @@ export default function TasksPage() {
 
       {isLoading && (
         <div className="space-y-2">
-          {[0, 1].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-lg bg-muted" />
-          ))}
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
         </div>
       )}
 
       {!isLoading && open.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border p-8 text-center">
-          <p className="text-sm text-muted-foreground">{t("tasks.empty")}</p>
-          <Button asChild className="mt-4">
-            <Link to="/tasks/new">{t("tasks.createFirst")}</Link>
-          </Button>
-        </div>
+        <EmptyState
+          icon={ListTodo}
+          title={t("tasks.empty")}
+          action={
+            <Button asChild className="mt-1">
+              <Link to="/tasks/new">{t("tasks.createFirst")}</Link>
+            </Button>
+          }
+        />
       )}
 
       {open.length > 0 && (

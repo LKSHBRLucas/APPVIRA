@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { useNotifications } from "@/hooks/use-notifications";
 import { usePush } from "@/hooks/use-push";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
 
 export default function NotificationsPage() {
@@ -64,16 +66,13 @@ export default function NotificationsPage() {
       <div className="space-y-2">
         {isLoading && (
           <div className="space-y-2">
-            {[0, 1].map((i) => (
-              <div key={i} className="h-20 animate-pulse rounded-lg bg-muted" />
-            ))}
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
           </div>
         )}
 
         {!isLoading && notifications.length === 0 && (
-          <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            {t("notifications.empty")}
-          </p>
+          <EmptyState icon={BellOff} title={t("notifications.empty")} />
         )}
 
         {notifications.map((notification) => (

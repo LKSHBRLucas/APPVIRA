@@ -33,7 +33,7 @@ function OptionChip({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors",
+        "flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected
           ? "border-primary bg-primary/10 text-primary"
           : "border-border bg-card text-muted-foreground hover:bg-muted",
@@ -347,7 +347,7 @@ export default function SessionPage() {
                     type="button"
                     onClick={() => setFeeling(n)}
                     className={cn(
-                      "h-11 flex-1 rounded-lg border text-sm font-semibold tabular-nums transition-colors",
+                      "h-11 flex-1 rounded-lg border text-sm font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       feeling === n
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border bg-card text-muted-foreground hover:bg-muted",

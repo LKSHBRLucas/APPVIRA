@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { to: "/tasks", labelKey: "nav.tasks", icon: ListTodo, end: false },
   { to: "/assistant", labelKey: "nav.assistant", icon: MessageSquare, end: false },
   { to: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, end: false },
-  { to: "/profile", labelKey: "nav.profile", icon: Settings, end: false },
+  { to: "/settings", labelKey: "nav.settings", icon: Settings, end: false },
 ] as const;
 
 export function AppShell() {

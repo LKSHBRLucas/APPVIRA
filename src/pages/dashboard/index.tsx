@@ -15,6 +15,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { upsertBehaviorPattern } from "@/lib/data/behaviors";
@@ -180,7 +182,7 @@ export default function DashboardPage() {
             type="button"
             onClick={() => setPeriod(p.key)}
             className={cn(
-              "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+              "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               period === p.key
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -193,24 +195,22 @@ export default function DashboardPage() {
 
       {isLoading ? (
         <div className="space-y-3">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-lg bg-muted" />
-          ))}
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
         </div>
       ) : report.total === 0 ? (
-        <div className="flex flex-col items-center rounded-lg border border-dashed border-border p-8 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-            <LineChart className="h-7 w-7 text-primary" />
-          </div>
-          <h2 className="mt-4 text-lg font-bold">{t("dashboard.emptyTitle")}</h2>
-          <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-            {t("dashboard.emptyHint")}
-          </p>
-          <Button className="mt-5 w-full" size="lg" onClick={() => navigate("/stuck")}>
-            <Play className="h-4 w-4" />
-            {t("dashboard.emptyCta")}
-          </Button>
-        </div>
+        <EmptyState
+          icon={LineChart}
+          title={t("dashboard.emptyTitle")}
+          hint={t("dashboard.emptyHint")}
+          action={
+            <Button className="w-full" size="lg" onClick={() => navigate("/stuck")}>
+              <Play className="h-4 w-4" />
+              {t("dashboard.emptyCta")}
+            </Button>
+          }
+        />
       ) : (
         <>
           {report.started === 0 && (

@@ -3812,6 +3812,7 @@ export type Database = {
           main_goal: string | null
           name: string | null
           onboarding_completed: boolean
+          preferences: Json
           procrastination_profile: string | null
           sleep_time: string | null
           updated_at: string
@@ -3826,6 +3827,7 @@ export type Database = {
           main_goal?: string | null
           name?: string | null
           onboarding_completed?: boolean
+          preferences?: Json
           procrastination_profile?: string | null
           sleep_time?: string | null
           updated_at?: string
@@ -3840,6 +3842,7 @@ export type Database = {
           main_goal?: string | null
           name?: string | null
           onboarding_completed?: boolean
+          preferences?: Json
           procrastination_profile?: string | null
           sleep_time?: string | null
           updated_at?: string

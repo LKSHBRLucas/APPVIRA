@@ -74,9 +74,26 @@ export async function updatePrivacySettings(
   userId: string,
   patch: Partial<PrivacySettingsRow>,
 ): Promise<void> {
-  const { error } = await supabase
+  const { data: existing } = await supabase
     .from("privacy_settings")
-    .update(patch)
-    .eq("user_id", userId);
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("privacy_settings")
+      .update(patch)
+      .eq("user_id", userId);
+    if (error) throw error;
+    return;
+  }
+
+  // No row yet (e.g. legacy account): insert one with the requested patch and
+  // the schema defaults for everything else.
+  const { error } = await supabase.from("privacy_settings").insert({
+    user_id: userId,
+    ...patch,
+  });
   if (error) throw error;
 }

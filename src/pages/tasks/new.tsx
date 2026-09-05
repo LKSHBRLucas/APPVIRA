@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,8 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useTasks } from "@/hooks/use-tasks";
 import { useNotifications } from "@/hooks/use-notifications";
+import { usePrivacy } from "@/hooks/use-privacy";
+import { useProfile } from "@/hooks/use-profile";
+import { useTasks } from "@/hooks/use-tasks";
+import { defaultFocusMin } from "@/lib/data/profiles";
+import { handleError } from "@/lib/feedback";
 
 const CATEGORIES = ["study", "training", "project", "reading", "organizing", "other"] as const;
 
@@ -21,37 +26,54 @@ export default function NewTaskPage() {
   const navigate = useNavigate();
   const { create } = useTasks();
   const { create: createNotification } = useNotifications();
+  const { profile } = useProfile();
+  const { settings } = usePrivacy();
 
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<string>("study");
   const [firstStep, setFirstStep] = useState("");
-  const [duration, setDuration] = useState("25");
+  const [duration, setDuration] = useState(() => String(defaultFocusMin(profile)));
   const [scheduledAt, setScheduledAt] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const durationNum = Number(duration);
+  const durationInvalid = !Number.isFinite(durationNum) || durationNum < 1 || durationNum > 480;
+  const scheduleInvalid = scheduledAt !== "" && Number.isNaN(new Date(scheduledAt).getTime());
+
+  useEffect(() => {
+    if (profile && duration === String(25)) {
+      setDuration(String(defaultFocusMin(profile)));
+    }
+  }, [profile, duration]);
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || durationInvalid || scheduleInvalid || saving) return;
     setSaving(true);
-    await create.mutateAsync({
-      title: title.trim(),
-      category,
-      first_step: first_step.trim() || null,
-      duration_min: Math.min(480, Math.max(1, Number(duration) || 25)),
-      scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-    });
-
-    if (scheduledAt) {
-      await createNotification.mutateAsync({
-        type: "reminder",
+    try {
+      await create.mutateAsync({
         title: title.trim(),
-        body: t("tasks.reminderBody"),
-        scheduled_for: new Date(scheduledAt).toISOString(),
+        category,
+        first_step: first_step.trim() || null,
+        duration_min: Math.round(durationNum),
+        scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
       });
-    }
 
-    setSaving(false);
-    navigate("/tasks", { replace: true });
+      if (scheduledAt && (settings?.notifications_enabled ?? true)) {
+        await createNotification.mutateAsync({
+          type: "reminder",
+          title: title.trim(),
+          body: t("tasks.reminderBody"),
+          scheduled_for: new Date(scheduledAt).toISOString(),
+        });
+      }
+
+      toast.success(t("tasks.created"));
+      navigate("/tasks", { replace: true });
+    } catch (error) {
+      handleError(t, "tasks.create", error);
+      setSaving(false);
+    }
   };
 
   return (
@@ -109,7 +131,11 @@ export default function NewTaskPage() {
               max={480}
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
+              aria-invalid={durationInvalid}
             />
+            {durationInvalid && (
+              <p className="text-xs text-destructive">{t("tasks.durationInvalid")}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="task-scheduled">{t("tasks.scheduledLabel")}</Label>
@@ -118,7 +144,11 @@ export default function NewTaskPage() {
               type="datetime-local"
               value={scheduledAt}
               onChange={(e) => setScheduledAt(e.target.value)}
+              aria-invalid={scheduleInvalid}
             />
+            {scheduleInvalid && (
+              <p className="text-xs text-destructive">{t("tasks.scheduleInvalid")}</p>
+            )}
           </div>
         </div>
 
@@ -126,7 +156,7 @@ export default function NewTaskPage() {
           type="submit"
           className="w-full"
           size="lg"
-          disabled={saving || !title.trim()}
+          disabled={saving || !title.trim() || durationInvalid || scheduleInvalid}
         >
           {saving ? t("tasks.saving") : t("tasks.save")}
         </Button>

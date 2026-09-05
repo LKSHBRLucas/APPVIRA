@@ -18,6 +18,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; name?: string }>({});
   const [submitting, setSubmitting] = useState(false);
 
   if (!loading && user) {
@@ -27,11 +28,28 @@ export default function AuthPage() {
   const switchMode = (next: AuthMode) => {
     setMode(next);
     setError(null);
+    setFieldErrors({});
+  };
+
+  const validate = (): boolean => {
+    const errors: { email?: string; password?: string; name?: string } = {};
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      errors.email = t("auth.emailInvalid");
+    }
+    if (password.length < 8) {
+      errors.password = t("auth.passwordShort");
+    }
+    if (mode === "signup" && !name.trim()) {
+      errors.name = t("auth.nameRequired");
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
+    if (submitting || !validate()) return;
     setSubmitting(true);
 
     const result =
@@ -101,7 +119,11 @@ export default function AuthPage() {
                     placeholder={t("auth.namePlaceholder")}
                     autoComplete="name"
                     required
+                    aria-invalid={!!fieldErrors.name}
                   />
+                  {fieldErrors.name && (
+                    <p className="text-xs text-destructive">{fieldErrors.name}</p>
+                  )}
                 </div>
               )}
 
@@ -115,7 +137,11 @@ export default function AuthPage() {
                   placeholder="voce@exemplo.com"
                   autoComplete="email"
                   required
+                  aria-invalid={!!fieldErrors.email}
                 />
+                {fieldErrors.email && (
+                  <p className="text-xs text-destructive">{fieldErrors.email}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -127,7 +153,11 @@ export default function AuthPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete={mode === "signin" ? "current-password" : "new-password"}
                   required
+                  aria-invalid={!!fieldErrors.password}
                 />
+                {fieldErrors.password && (
+                  <p className="text-xs text-destructive">{fieldErrors.password}</p>
+                )}
               </div>
 
               {error && (

@@ -5,9 +5,11 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useCheckin } from "@/hooks/use-checkin";
 import { useProfile } from "@/hooks/use-profile";
 import { useTasks } from "@/hooks/use-tasks";
+import { handleError } from "@/lib/feedback";
 import { cn } from "@/lib/utils";
 
 const EnergyIcon = ({ level }: { level: number }) => {
@@ -23,6 +25,7 @@ export default function HomePage() {
   const { tasks, isLoading } = useTasks();
   const { latest, checkin } = useCheckin();
   const [energy, setEnergy] = useState<number | null>(null);
+  const [energyPending, setEnergyPending] = useState<number | null>(null);
 
   const now = new Date();
   const nextAction =
@@ -45,8 +48,16 @@ export default function HomePage() {
   const firstName = profile?.name?.trim()?.split(" ")[0] ?? t("home.friend");
 
   const pickEnergy = async (level: number) => {
+    if (energyPending !== null) return;
     setEnergy(level);
-    await checkin.mutateAsync(level);
+    setEnergyPending(level);
+    try {
+      await checkin.mutateAsync(level);
+    } catch (error) {
+      handleError(t, "home.energy", error);
+    } finally {
+      setEnergyPending(null);
+    }
   };
 
   return (
@@ -68,8 +79,9 @@ export default function HomePage() {
               key={level}
               type="button"
               onClick={() => pickEnergy(level)}
+              disabled={energyPending !== null}
               className={cn(
-                "flex h-10 flex-1 items-center justify-center rounded-md border text-sm font-semibold transition-all",
+                "flex h-10 flex-1 items-center justify-center rounded-md border text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 (energy ?? latest?.level) === level
                   ? "border-primary bg-primary/15 text-primary"
                   : "border-border bg-muted/40 text-muted-foreground hover:bg-muted",
@@ -112,7 +124,7 @@ export default function HomePage() {
         </div>
 
         {isLoading ? (
-          <div className="mt-3 h-16 animate-pulse rounded-md bg-muted" />
+          <Skeleton className="mt-3 h-16 w-full" />
         ) : nextAction ? (
           <div className="mt-3">
             <p className="font-semibold leading-snug">{nextAction.title}</p>

@@ -190,38 +190,39 @@ resetando o guard, `handleError` no catch, botão `disabled` enquanto pendente.
   `public/locales/en.json`, `package.json`
 
 ## Checklist de implementação
-- [ ] Remover mock do paywall em `src/pages/profile/index.tsx` (card estático "Plano Gratuito")
-- [ ] Restilizar `src/pages/NotFound.tsx` com tokens e `logError` (sem cores cruas/console cru)
-- [ ] Deletar os 39 arquivos `src/components/ui/*` não utilizados e os 2 hooks órfãos
-- [ ] Remover `<Toaster/>` (Radix) e `TooltipProvider` de `src/App.tsx`; manter Sonner
-- [ ] `pnpm remove` das dependências listadas (UI + Radix); `pnpm check` + `pnpm build` limpos
-- [ ] Criar `src/lib/feedback.ts` (`logError`, `handleError`) e usar nos catches das páginas
-- [ ] Criar `src/components/error-boundary.tsx` e envolvê-lo em `src/App.tsx`
-- [ ] Usar `Skeleton` nos loadings de dashboard, tasks, home, notifications
-- [ ] Criar `src/components/page-spinner.tsx` e `src/components/empty-state.tsx`; substituir empty states inline (tasks, notifications, dashboard, plans)
-- [ ] Validações: auth (email/senha), tasks/new (título, duração 1–480, data), onboarding (try/finally), stuck `handleStart`, profile intenção (try/finally), energia (guard de duplo clique)
-- [ ] Code-splitting: `React.lazy` + `Suspense` em `src/router.tsx`
-- [ ] `focus-visible` em chips/botões custom (stuck, session, home, dashboard, tabs)
-- [ ] Migração `profiles.preferences jsonb` aplicada via `supabase_migration`
-- [ ] Escrever `supabase/functions/delete-account/index.ts` e fazer deploy
-- [ ] Criar `src/hooks/use-privacy.ts`
-- [ ] Criar `src/pages/settings/index.tsx` com 4 abas funcionais e persistindo de verdade
-- [ ] Nav: `src/components/app-shell.tsx` aponta para `/settings`; rota em `src/router.tsx`
-- [ ] Slim de `src/pages/profile/index.tsx` (Plano informativo + Intenções + atalho settings)
-- [ ] `tasks/new` e onboarding usam `preferences.default_focus_min` como padrão
-- [ ] Chaves i18n novas em `public/locales/en.json`
-- [ ] Criar `docs/architecture.md`
+- [x] Remover mock do paywall em `src/pages/profile/index.tsx` (card estático "Plano Gratuito")
+- [x] Restilizar `src/pages/NotFound.tsx` com tokens e `logError` (sem cores cruas/console cru)
+- [x] Deletar os 39 arquivos `src/components/ui/*` não utilizados e os 2 hooks órfãos
+- [x] Remover `<Toaster/>` (Radix) e `TooltipProvider` de `src/App.tsx`; manter Sonner
+- [x] `pnpm remove` das dependências listadas (UI + Radix); `pnpm check` + `pnpm build` limpos
+- [x] Criar `src/lib/feedback.ts` (`logError`, `handleError`) e usar nos catches das páginas
+- [x] Criar `src/components/error-boundary.tsx` (+ `error-fallback.tsx`) e envolvê-lo em `src/App.tsx`
+- [x] Usar `Skeleton` nos loadings de dashboard, tasks, home, notifications, plans, settings
+- [x] Criar `src/components/page-spinner.tsx` e `src/components/empty-state.tsx`; substituir empty states inline (tasks, notifications, dashboard, plans)
+- [x] Validações: auth (email/senha), tasks/new (título, duração 1–480, data), onboarding (try/finally), stuck `handleStart`, profile intenção (try/finally), plans save (try/catch), energia (guard de duplo clique)
+- [x] Code-splitting: `React.lazy` + `Suspense` em `src/router.tsx`
+- [x] `focus-visible` em chips/botões custom (stuck, session, home, dashboard, plans, tabs)
+- [x] Migração `profiles.preferences jsonb` aplicada via `supabase_migration`
+- [x] Escrever `supabase/functions/delete-account/index.ts` e fazer deploy
+- [x] Criar `src/hooks/use-privacy.ts`
+- [x] Criar `src/pages/settings/index.tsx` com 4 abas funcionais e persistindo de verdade
+- [x] Nav: `src/components/app-shell.tsx` aponta para `/settings`; rota em `src/router.tsx`
+- [x] Slim de `src/pages/profile/index.tsx` (Plano informativo + Intenções + atalho settings)
+- [x] `tasks/new` e onboarding usam `preferences.default_focus_min` como padrão
+- [x] Chaves i18n novas em `public/locales/en.json`
+- [x] Criar `docs/architecture.md`
 
 ## Checklist de verificação
-- [ ] `pnpm check` (lint + tsc) sem erros
-- [ ] `pnpm test` verde (mantém os 56 testes atuais; novos se adicionados)
-- [ ] `pnpm build` sem erros (aviso de chunk deve sumir ou cair com code-splitting)
-- [ ] Sem import quebrado após deletar componentes (grep por `@/components/ui/<deletado>` retorna 0 em código de app)
-- [ ] Erro simulado em mutation mostra toast `errors.default` e `console.error` contextual; `saving` sempre reseta em `finally`
-- [ ] Botões de submit ficam `disabled` enquanto pendentes (auth, onboarding, tasks/new, stuck, settings, perfil)
-- [ ] `/settings` renderiza 4 abas; nome/objetivo persistem em `profiles`; duração padrão persiste em `preferences`
-- [ ] Excluir conta: confirmação em 2 etapas → função exclui linhas e conta → redireciona `/auth`
-- [ ] `/profile` sem aba privacidade e sem mock de upgrade; atalho para settings
-- [ ] NotFound estilizado com tokens
-- [ ] Screenshots mobile_390 e desktop_1280 das rotas afetadas (dashboard, settings, stuck, home) sem overflow/quebra
-- [ ] PWA: `public/sw.js` e `manifest.webmanifest` intactos
+- [x] `pnpm check` (lint + tsc) sem erros
+- [x] `pnpm test` verde (56 testes)
+- [x] `pnpm build` sem erros (bundle inicial caiu de ~1,4 MB; maior chunk ~930 kB)
+- [x] Sem import quebrado após deletar componentes (grep retorna 0 em código de app)
+- [x] `updatePrivacySettings` vira upsert (insere linha quando não existe)
+- [x] Erro simulado em mutation mostra toast `errors.default`; `saving` reseta em `finally`
+- [x] Botões de submit `disabled` enquanto pendentes (auth, onboarding, tasks/new, stuck, settings, perfil, plans, home)
+- [ ] `/settings` renderiza 4 abas e persiste nome/objetivo/duração (verificação visual bloqueada: preview deslogado)
+- [ ] Excluir conta: confirmação em 2 etapas → função exclui → `/auth` (verificação de execução manual)
+- [x] `/profile` sem aba privacidade e sem mock de upgrade; atalho para settings
+- [x] NotFound estilizado com tokens
+- [ ] Screenshots mobile_390 e desktop_1280 das rotas autenticadas (bloqueado: preview exige login)
+- [x] PWA: `public/sw.js` e `manifest.webmanifest` intactos
