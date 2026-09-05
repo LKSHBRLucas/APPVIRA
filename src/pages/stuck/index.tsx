@@ -12,6 +12,7 @@ import { useIntentions } from "@/hooks/use-intentions";
 import { useSessionMutations } from "@/hooks/use-session-mutations";
 import { useTasks } from "@/hooks/use-tasks";
 import { listObstacles } from "@/lib/data/catalogs";
+import { createTask } from "@/lib/data/tasks";
 import { recordInterventionResult } from "@/lib/data/intervention-results";
 import { pickIntervention } from "@/lib/intervention/engine";
 import type { ObstacleCode } from "@/lib/intervention/types";
@@ -20,6 +21,18 @@ import { suggestIntentions } from "@/lib/plan/suggestions";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
+/**
+ * Estou travado — fluxo 100% ligado ao banco (Enter Cloud), sem mock.
+ * Mapa de botões → funções reais:
+ *  - Chip de tarefa         → seleção local de contexto (não grava; a tarefa
+ *                            escolhida é persistida na sessão ao escolher obstáculo)
+ *  - Botão de obstáculo     → sessions.insert (sessão "planned" já nasce no banco)
+ *                            ou sessions.update ao trocar de obstáculo
+ *  - Salvar plano Se→Então  → implementation_intentions.insert
+ *  - Começar                → sessions.update (intervention_code) +
+ *                            intervention_results.insert + navega para o modo foco
+ *    (o texto digitado vira tasks.insert quando "Começar" é pressionado)
+ */
 type Step = "obstacle" | "intervention";
 
 export default function StuckPage() {
@@ -29,7 +42,7 @@ export default function StuckPage() {
   const { user } = useAuth();
   const { tasks } = useTasks();
   const { latest } = useCheckin();
-  const { start } = useSessionMutations();
+  const { start, patch } = useSessionMutations();
   const { create: createIntention } = useIntentions();
 
   const incomingTaskId = (location.state as { taskId?: string } | null)?.taskId;
@@ -38,6 +51,7 @@ export default function StuckPage() {
   const [taskId, setTaskId] = useState<string | null>(incomingTaskId ?? null);
   const [note, setNote] = useState("");
   const [obstacleCode, setObstacleCode] = useState<ObstacleCode | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [savingIntention, setSavingIntention] = useState(false);
   const [intentionSaved, setIntentionSaved] = useState(false);
@@ -75,6 +89,50 @@ export default function StuckPage() {
 
   const planIsIntention = plan?.intervention.code === "implementation_intention";
 
+  /** Real call: sessions.insert (first pick) or sessions.update (changing obstacle). */
+  const handleObstaclePick = async (code: ObstacleCode) => {
+    const nextPlan = pickIntervention({
+      code,
+      note: note.trim() || undefined,
+      task:
+        taskId && (() => {
+          const task = tasks.find((x) => x.id === taskId);
+          return task
+            ? {
+                id: task.id,
+                title: task.title,
+                firstStep: task.first_step,
+                durationMin: task.duration_min,
+              }
+            : undefined;
+        })(),
+      energy: latest?.level,
+    });
+
+    if (sessionId) {
+      // Already have a draft session — persist the new obstacle (UPDATE).
+      await patch.mutateAsync({
+        id: sessionId,
+        patch: { obstacle_code: code, task_id: taskId },
+      });
+    } else {
+      // Real INSERT — the planned session is created in the database right now.
+      const { session } = await start.mutateAsync({
+        task_id: taskId,
+        planned_start: new Date().toISOString(),
+        duration_planned: nextPlan.intervention.durationMin,
+        obstacle_code: code,
+        intervention_code: null,
+        energy: latest?.level ?? null,
+      });
+      setSessionId(session.id);
+    }
+
+    setObstacleCode(code);
+    setStep("intervention");
+  };
+
+  /** Real call: implementation_intentions.insert. */
   const handleSaveIntention = async () => {
     if (!user || !intentionSuggestion) return;
     setSavingIntention(true);
@@ -91,48 +149,48 @@ export default function StuckPage() {
     }
   };
 
+  /** Real calls: tasks.insert (note) + sessions.update + intervention_results.insert. */
   const handleStart = async () => {
-    if (!obstacleCode || !plan) return;
+    if (!obstacleCode || !plan || !sessionId) return;
     setStarting(true);
-    const resolvedTaskId =
-      taskId ??
-      (note.trim()
-        ? (async () => {
-            const task = await import("@/lib/data/tasks").then((m) =>
-              m.createTask(user!.id, {
-                title: note.trim(),
-                category: "other",
-                first_step: null,
-                scheduled_at: null,
-                duration_min: 15,
-              }),
-            );
-            return task.id;
-          })()
-        : null);
 
-    const sessionTaskId = resolvedTaskId ? await resolvedTaskId : null;
+    // Resolve the task context: selected task, or a real task created from the note.
+    let resolvedTaskId = taskId;
+    if (!resolvedTaskId && note.trim()) {
+      const task = await createTask(user!.id, {
+        title: note.trim(),
+        category: "other",
+        first_step: plan.firstStep ?? null,
+        scheduled_at: null,
+        duration_min: plan.intervention.durationMin,
+      });
+      resolvedTaskId = task.id;
+    }
 
-    const { session } = await start.mutateAsync({
-      task_id: sessionTaskId,
-      planned_start: new Date().toISOString(),
-      duration_planned: plan.intervention.durationMin,
-      obstacle_code: obstacleCode,
-      intervention_code: plan.intervention.code,
-      energy: latest?.level ?? null,
+    // sessions.update — stamp the intervention on the planned session.
+    await patch.mutateAsync({
+      id: sessionId,
+      patch: {
+        intervention_code: plan.intervention.code,
+        task_id: resolvedTaskId,
+      },
     });
 
+    // intervention_results.insert — what was shown for this session.
     await recordInterventionResult(user!.id, {
-      session_id: session.id,
-      task_id: sessionTaskId,
+      session_id: sessionId,
+      task_id: resolvedTaskId,
       intervention_code: plan.intervention.code,
     });
 
     setStarting(false);
-    navigate(`/session/${session.id}`, { replace: true });
+    navigate(`/session/${sessionId}`, { replace: true });
   };
 
-  const goBack = () => setStep("obstacle");
+  const goBack = () => {
+    setStep("obstacle");
+    // Keeping the created session as a draft — changing the obstacle later updates it.
+  };
 
   return (
     <div className="animate-fade-in-up">
@@ -205,10 +263,7 @@ export default function StuckPage() {
               <button
                 key={obstacle.code}
                 type="button"
-                onClick={() => {
-                  setObstacleCode(obstacle.code as ObstacleCode);
-                  setStep("intervention");
-                }}
+                onClick={() => void handleObstaclePick(obstacle.code as ObstacleCode)}
                 className="flex w-full items-center justify-between rounded-lg border border-border bg-card px-4 py-3 text-left text-sm transition-colors hover:border-primary/50 hover:bg-muted"
               >
                 {obstacle.label}
