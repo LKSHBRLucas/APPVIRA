@@ -1,10 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { hasRecurrence, pickIntervention } from "./engine";
+import {
+  getInterventionSelector,
+  hasRecurrence,
+  pickIntervention,
+  rulesSelector,
+} from "./engine";
 import type { ObstacleInput } from "./types";
 
 const base = (overrides: Partial<ObstacleInput>): ObstacleInput => ({
   code: "other",
   ...overrides,
+});
+
+describe("intervention selector seam (AI swap-ready)", () => {
+  it("exposes the rules selector as the active one", () => {
+    expect(getInterventionSelector().id).toBe("rules-v2");
+    expect(rulesSelector.pick).toBe(pickIntervention);
+  });
+
+  it("selects through the interface with the same deterministic result", () => {
+    const viaInterface = getInterventionSelector().pick(
+      base({ code: "task_too_big" }),
+    );
+    expect(viaInterface).toEqual(pickIntervention(base({ code: "task_too_big" })));
+    expect(viaInterface.ruleId).toContain("rules_v2");
+  });
 });
 
 describe("pickIntervention (single obstacle, backward compatible)", () => {

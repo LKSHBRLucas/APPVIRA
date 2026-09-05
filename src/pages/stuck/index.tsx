@@ -15,7 +15,7 @@ import { listObstacles } from "@/lib/data/catalogs";
 import { createTask } from "@/lib/data/tasks";
 import { recordInterventionResult } from "@/lib/data/intervention-results";
 import { replaceSessionObstacles } from "@/lib/data/session-obstacles";
-import { pickIntervention } from "@/lib/intervention/engine";
+import { getInterventionSelector } from "@/lib/intervention/engine";
 import type { ObstacleCode } from "@/lib/intervention/types";
 import { buildImplementationPlan } from "@/lib/plan/suggestions";
 import { useQuery } from "@tanstack/react-query";
@@ -84,7 +84,7 @@ export default function StuckPage() {
   const plan = useMemo(
     () =>
       selectedCodes.length > 0
-        ? pickIntervention({
+        ? getInterventionSelector().pick({
             codes: selectedCodes,
             note: note.trim() || undefined,
             task: selectedTask

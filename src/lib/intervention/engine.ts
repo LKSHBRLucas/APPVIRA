@@ -2,6 +2,7 @@ import { INTERVENTION_CATALOG } from "./catalog";
 import type {
   InterventionCode,
   InterventionPlan,
+  InterventionSelector,
   ObstacleCode,
   ObstacleInput,
 } from "./types";
@@ -214,4 +215,19 @@ export function pickIntervention(input: ObstacleInput): InterventionPlan {
   }
 
   return plan;
+}
+
+/**
+ * The current selector: deterministic rules. This is the single seam where a
+ * data-driven/AI selector can be swapped in later — the flow only talks to
+ * getInterventionSelector(), never to pickIntervention directly.
+ */
+export const rulesSelector: InterventionSelector = {
+  id: "rules-v2",
+  pick: pickIntervention,
+};
+
+/** Active intervention selector. Swap this return to migrate to an AI model. */
+export function getInterventionSelector(): InterventionSelector {
+  return rulesSelector;
 }

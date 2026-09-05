@@ -70,3 +70,15 @@ export interface ObstacleInput {
   /** Trigger codes of the user's saved, active implementation intentions. */
   intentionTriggers?: Array<string | null>;
 }
+
+/**
+ * Contract every intervention selector must honor. Today the deterministic
+ * rules implement it; tomorrow an AI/adaptive model can implement the same
+ * interface and be swapped in via getInterventionSelector() without touching
+ * the flow (stuck page, session creation, persistence).
+ */
+export interface InterventionSelector {
+  /** Stable identifier recorded for analytics, e.g. "rules-v2" or "model-v1". */
+  id: string;
+  pick(input: ObstacleInput): InterventionPlan;
+}
