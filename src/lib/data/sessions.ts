@@ -99,6 +99,7 @@ export type SessionEventType =
   | "task_started"
   | "task_completed"
   | "task_abandoned"
+  | "checkin_answered"
   | "recovery_offered"
   | "recovery_accepted"
   | "recovery_completed"

@@ -1,0 +1,4 @@
+alter table public.focus_sessions
+  add column accomplished text check (accomplished in ('yes', 'partial', 'no')),
+  add column intervention_helped text check (intervention_helped in ('yes', 'partial', 'no')),
+  add column feeling int check (feeling between 1 and 5);

@@ -31,3 +31,17 @@ export async function recordInterventionResult(
   });
   if (error) throw error;
 }
+
+/** Close the loop on an intervention once the session finishes. */
+export async function updateInterventionOutcome(
+  userId: string,
+  sessionId: string,
+  outcome: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("intervention_results")
+    .update({ outcome })
+    .eq("user_id", userId)
+    .eq("session_id", sessionId);
+  if (error) throw error;
+}

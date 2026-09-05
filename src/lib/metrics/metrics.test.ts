@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  accomplishmentRate,
+  avgFeeling,
   avgSessionDuration,
   completionRate,
   initiationRate,
+  interventionHelpRate,
   latencyToAction,
   recoveryRate,
+  type FocusCheckinLike,
   type SessionLike,
 } from "./metrics";
 
@@ -83,5 +87,54 @@ describe("avgSessionDuration", () => {
 
   it("returns null when no completed session has a duration", () => {
     expect(avgSessionDuration([s({ duration_actual: null })])).toBeNull();
+  });
+});
+
+const checkin = (overrides: Partial<FocusCheckinLike>): FocusCheckinLike => ({
+  accomplished: "yes",
+  intervention_helped: "yes",
+  feeling: 4,
+  ...overrides,
+});
+
+describe("accomplishmentRate", () => {
+  it("returns null when no check-in was answered", () => {
+    expect(accomplishmentRate([])).toBeNull();
+    expect(accomplishmentRate([checkin({ accomplished: null })])).toBeNull();
+  });
+
+  it("counts yes and partial as accomplished", () => {
+    const checkins = [
+      checkin({ accomplished: "yes" }),
+      checkin({ accomplished: "partial" }),
+      checkin({ accomplished: "no" }),
+    ];
+    expect(accomplishmentRate(checkins)).toBeCloseTo(2 / 3);
+  });
+});
+
+describe("interventionHelpRate", () => {
+  it("returns null when no intervention feedback was given", () => {
+    expect(interventionHelpRate([checkin({ intervention_helped: null })])).toBeNull();
+  });
+
+  it("counts yes and partial as helpful", () => {
+    const checkins = [
+      checkin({ intervention_helped: "yes" }),
+      checkin({ intervention_helped: "no" }),
+      checkin({ intervention_helped: "partial" }),
+    ];
+    expect(interventionHelpRate(checkins)).toBeCloseTo(2 / 3);
+  });
+});
+
+describe("avgFeeling", () => {
+  it("returns null when no feeling was recorded", () => {
+    expect(avgFeeling([checkin({ feeling: null })])).toBeNull();
+  });
+
+  it("averages the 1-5 feelings", () => {
+    const checkins = [checkin({ feeling: 2 }), checkin({ feeling: 4 }), checkin({ feeling: 3 })];
+    expect(avgFeeling(checkins)).toBe(3);
   });
 });

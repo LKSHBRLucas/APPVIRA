@@ -55,3 +55,36 @@ export function avgSessionDuration(sessions: SessionLike[]): number | null {
   if (durations.length === 0) return null;
   return durations.reduce((a, b) => a + b, 0) / durations.length;
 }
+
+export interface FocusCheckinLike {
+  accomplished: "yes" | "partial" | "no" | null;
+  intervention_helped: "yes" | "partial" | "no" | null;
+  feeling: number | null;
+}
+
+/** Fraction of answered check-ins where the user accomplished what they intended. */
+export function accomplishmentRate(checkins: FocusCheckinLike[]): number | null {
+  const answered = checkins.filter((c) => c.accomplished !== null);
+  if (answered.length === 0) return null;
+  const ok = answered.filter(
+    (c) => c.accomplished === "yes" || c.accomplished === "partial",
+  ).length;
+  return ok / answered.length;
+}
+
+/** Fraction of answered check-ins where the intervention helped (yes/partial). */
+export function interventionHelpRate(checkins: FocusCheckinLike[]): number | null {
+  const answered = checkins.filter((c) => c.intervention_helped !== null);
+  if (answered.length === 0) return null;
+  const helped = answered.filter(
+    (c) => c.intervention_helped === "yes" || c.intervention_helped === "partial",
+  ).length;
+  return helped / answered.length;
+}
+
+/** Average post-session feeling (1–5) across answered check-ins. */
+export function avgFeeling(checkins: FocusCheckinLike[]): number | null {
+  const withFeeling = checkins.filter((c) => c.feeling !== null).map((c) => c.feeling as number);
+  if (withFeeling.length === 0) return null;
+  return withFeeling.reduce((a, b) => a + b, 0) / withFeeling.length;
+}

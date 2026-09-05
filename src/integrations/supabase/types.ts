@@ -3534,25 +3534,34 @@ export type Database = {
       }
       focus_sessions: {
         Row: {
+          accomplished: string | null
           duration_actual: number | null
           ended_at: string | null
+          feeling: number | null
           id: string
+          intervention_helped: string | null
           session_id: string | null
           started_at: string
           user_id: string
         }
         Insert: {
+          accomplished?: string | null
           duration_actual?: number | null
           ended_at?: string | null
+          feeling?: number | null
           id?: string
+          intervention_helped?: string | null
           session_id?: string | null
           started_at?: string
           user_id: string
         }
         Update: {
+          accomplished?: string | null
           duration_actual?: number | null
           ended_at?: string | null
+          feeling?: number | null
           id?: string
+          intervention_helped?: string | null
           session_id?: string | null
           started_at?: string
           user_id?: string
