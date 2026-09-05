@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickIntervention } from "./engine";
+import { hasRecurrence, pickIntervention } from "./engine";
 import type { ObstacleInput } from "./types";
 
 const base = (overrides: Partial<ObstacleInput>): ObstacleInput => ({
@@ -46,6 +46,29 @@ describe("pickIntervention", () => {
 
   it("maps other to micro_start as the default", () => {
     expect(pickIntervention(base({ code: "other" })).intervention.code).toBe("micro_start");
+  });
+
+  it("uses implementation_intention when the note signals recurrence", () => {
+    for (const code of ["no_motivation", "other"] as const) {
+      const plan = pickIntervention(
+        base({ code, note: "Isso acontece toda vez que chego em casa" }),
+      );
+      expect(plan.intervention.code).toBe("implementation_intention");
+      expect(plan.ctaLabel).toBe("Criar plano e começar");
+    }
+  });
+
+  it("keeps micro_start when the note does not signal recurrence", () => {
+    const plan = pickIntervention(
+      base({ code: "no_motivation", note: "hoje só não estou a fim" }),
+    );
+    expect(plan.intervention.code).toBe("micro_start");
+  });
+
+  it("detects recurrence markers case-insensitively", () => {
+    expect(hasRecurrence("SEMPRE travo")).toBe(true);
+    expect(hasRecurrence("nunca consigo começar")).toBe(true);
+    expect(hasRecurrence("um dia normal")).toBe(false);
   });
 
   it("always returns a message and ctaLabel in pt-BR", () => {

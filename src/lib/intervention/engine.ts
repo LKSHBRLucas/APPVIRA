@@ -56,12 +56,23 @@ const engine: Engine = {
       : {}),
   }),
 
-  no_motivation: () => ({
-    intervention: byCode("micro_start"),
-    message:
-      "Não dá para esperar a motivação aparecer. A motivação vem depois de começar — reduza a barreira.",
-    ctaLabel: "Começar com 5 min",
-  }),
+  no_motivation: ({ note }) => {
+    if (note && hasRecurrence(note)) {
+      return {
+        intervention: byCode("implementation_intention"),
+        message:
+          "Esse bloqueio se repete nos mesmos momentos. Automatize a decisão antes que ela aconteça.",
+        ctaLabel: "Criar plano e começar",
+        firstStep: "Escrever o plano: SE [situação], ENTÃO [primeira ação]",
+      };
+    }
+    return {
+      intervention: byCode("micro_start"),
+      message:
+        "Não dá para esperar a motivação aparecer. A motivação vem depois de começar — reduza a barreira.",
+      ctaLabel: "Começar com 5 min",
+    };
+  },
 
   perfectionism: () => ({
     intervention: byCode("cognitive_restructuring"),
@@ -102,13 +113,44 @@ const engine: Engine = {
     ctaLabel: "Reagendar para agora",
   }),
 
-  other: () => ({
-    intervention: byCode("micro_start"),
-    message:
-      "Vamos simplificar: comece com uma sessão mínima e veja o que acontece.",
-    ctaLabel: "Começar com 10 min",
-  }),
+  other: ({ note }) => {
+    if (note && hasRecurrence(note)) {
+      return {
+        intervention: byCode("implementation_intention"),
+        message:
+          "O padrão se repete. Automatize a decisão com um plano SE → ENTÃO antes do gatilho.",
+        ctaLabel: "Criar plano e começar",
+        firstStep: "Escrever: SE [situação], ENTÃO [primeira ação]",
+      };
+    }
+    return {
+      intervention: byCode("micro_start"),
+      message:
+        "Vamos simplificar: comece com uma sessão mínima e veja o que acontece.",
+      ctaLabel: "Começar com 10 min",
+    };
+  },
 };
+
+const RECURRENCE_MARKERS = [
+  "sempre",
+  "todo dia",
+  "todos os dias",
+  "toda vez",
+  "de novo",
+  "novamente",
+  "repetidamente",
+  "direto",
+  "recorrente",
+  "nunca consigo",
+  "toda semana",
+];
+
+/** Detects language suggesting a recurring failure pattern in the note. */
+export function hasRecurrence(text: string): boolean {
+  const lower = text.toLowerCase();
+  return RECURRENCE_MARKERS.some((marker) => lower.includes(marker));
+}
 
 export function pickIntervention(input: ObstacleInput): InterventionPlan {
   const plan = engine[input.code](input);
