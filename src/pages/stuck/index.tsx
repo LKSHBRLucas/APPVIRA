@@ -17,8 +17,7 @@ import { recordInterventionResult } from "@/lib/data/intervention-results";
 import { replaceSessionObstacles } from "@/lib/data/session-obstacles";
 import { pickIntervention } from "@/lib/intervention/engine";
 import type { ObstacleCode } from "@/lib/intervention/types";
-import { OBSTACLE_TO_PROFILE } from "@/lib/behaviors/profiles";
-import { suggestIntentions } from "@/lib/plan/suggestions";
+import { buildImplementationPlan } from "@/lib/plan/suggestions";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
@@ -29,14 +28,16 @@ import { cn } from "@/lib/utils";
  *                            escolher o obstáculo)
  *  - Botões de obstáculo    → seleção múltipla (até 3) + sessions.insert/update
  *                            + session_obstacles.insert (a combinação inteira)
- *  - Salvar plano Se→Então  → implementation_intentions.insert
+ *  - Salvar plano Se→Então  → implementation_intentions.insert (formulário
+ *                            editável pré-preenchido a partir da tarefa abstrata)
  *  - Começar                → sessions.update (intervention_code) +
  *                            intervention_results.insert (accepted=true, ou seja,
  *                            o usuário aceitou e iniciou) + navega para o modo foco
  *    (o texto digitado vira tasks.insert quando "Começar" é pressionado)
  *
- * A combinação escolhida, a intervenção aplicada e o aceite ficam persistidos —
- * base para analytics e para um futuro modelo adaptativo sem refazer o fluxo.
+ * As intenções salvas do usuário alimentam o motor: quando um obstáculo
+ * selecionado casa com o trigger de uma intenção ativa, o motor tende a
+ * implementação (bônus determinístico) — base para combinações futuras.
  */
 const MAX_OBSTACLES = 3;
 type Step = "obstacle" | "intervention";
@@ -49,7 +50,7 @@ export default function StuckPage() {
   const { tasks } = useTasks();
   const { latest } = useCheckin();
   const { start, patch } = useSessionMutations();
-  const { create: createIntention } = useIntentions();
+  const { intentions, create: createIntention } = useIntentions();
 
   const incomingTaskId = (location.state as { taskId?: string } | null)?.taskId;
 
@@ -61,6 +62,8 @@ export default function StuckPage() {
   const [starting, setStarting] = useState(false);
   const [savingIntention, setSavingIntention] = useState(false);
   const [intentionSaved, setIntentionSaved] = useState(false);
+  const [iiIf, setIiIf] = useState("");
+  const [iiThen, setIiThen] = useState("");
 
   const { data: obstacles = [] } = useQuery({
     queryKey: ["obstacles"],
@@ -68,8 +71,15 @@ export default function StuckPage() {
   });
 
   const plannedTasks = tasks.filter((task) => task.status === "planned");
-
   const selectedTask = taskId ? tasks.find((x) => x.id === taskId) : null;
+
+  const intentionTriggers = useMemo(
+    () =>
+      intentions
+        .filter((i) => i.active)
+        .map((i) => i.trigger_code),
+    [intentions],
+  );
 
   const plan = useMemo(
     () =>
@@ -86,21 +96,21 @@ export default function StuckPage() {
                 }
               : undefined,
             energy: latest?.level,
+            intentionTriggers,
           })
         : null,
-    [selectedCodes, note, selectedTask, latest?.level],
-  );
-
-  const intentionSuggestion = useMemo(
-    () =>
-      selectedCodes[0]
-        ? (suggestIntentions(OBSTACLE_TO_PROFILE[selectedCodes[0]], null)[0] ??
-          null)
-        : null,
-    [selectedCodes],
+    [selectedCodes, note, selectedTask, latest?.level, intentionTriggers],
   );
 
   const planIsIntention = plan?.intervention.code === "implementation_intention";
+
+  const intentionPlan = useMemo(
+    () =>
+      selectedCodes.length > 0
+        ? buildImplementationPlan(selectedCodes, selectedTask)
+        : null,
+    [selectedCodes, selectedTask],
+  );
 
   const toggleObstacle = (code: ObstacleCode) => {
     setSelectedCodes((prev) => {
@@ -110,10 +120,6 @@ export default function StuckPage() {
     });
   };
 
-  /**
-   * Real calls: sessions.insert (first pick) or sessions.update (changing the
-   * selection) + session_obstacles.insert — the whole combination is persisted.
-   */
   const handleAnalyze = async () => {
     if (!plan || selectedCodes.length === 0) return;
     const primaryCode = selectedCodes[0];
@@ -137,17 +143,23 @@ export default function StuckPage() {
       await replaceSessionObstacles(user!.id, session.id, selectedCodes);
     }
 
+    // Pre-fill the editable SE → ENTÃO form from the abstract task.
+    if (intentionPlan) {
+      setIiIf(intentionPlan.ifPart);
+      setIiThen(intentionPlan.thenPart);
+    }
     setStep("intervention");
   };
 
-  /** Real call: implementation_intentions.insert. */
+  /** Real call: implementation_intentions.insert with the user's edited plan. */
   const handleSaveIntention = async () => {
-    if (!user || !intentionSuggestion) return;
+    if (!user || !selectedCodes[0]) return;
+    if (!iiIf.trim() || !iiThen.trim()) return;
     setSavingIntention(true);
     try {
       await createIntention.mutateAsync({
-        if_part: intentionSuggestion.ifPart,
-        then_part: intentionSuggestion.thenPart,
+        if_part: iiIf.trim(),
+        then_part: iiThen.trim(),
         trigger_code: selectedCodes[0],
       });
       setIntentionSaved(true);
@@ -334,25 +346,43 @@ export default function StuckPage() {
             )}
           </div>
 
-          {planIsIntention && intentionSuggestion && (
+          {planIsIntention && intentionPlan && (
             <div className="mt-4 rounded-lg border border-border bg-card p-4">
               <p className="text-sm font-medium">{t("stuck.intentionTitle")}</p>
-              <div className="mt-3 space-y-2 text-sm">
-                <p className="rounded-md bg-muted p-3">
-                  <span className="font-semibold text-primary">SE</span>{" "}
-                  {intentionSuggestion.ifPart.replace(/^SE /i, "")}
-                </p>
-                <p className="rounded-md bg-muted p-3">
-                  <span className="font-semibold text-primary">ENTÃO</span>{" "}
-                  {intentionSuggestion.thenPart.replace(/^ENTÃO /i, "")}
-                </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t("stuck.intentionHint")}
+              </p>
+              <div className="mt-3 space-y-2">
+                <div className="space-y-1">
+                  <Label htmlFor="ii-if">{t("stuck.intentionIf")}</Label>
+                  <Input
+                    id="ii-if"
+                    value={iiIf}
+                    onChange={(e) => setIiIf(e.target.value)}
+                    placeholder={t("stuck.intentionIfPlaceholder")}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="ii-then">{t("stuck.intentionThen")}</Label>
+                  <Input
+                    id="ii-then"
+                    value={iiThen}
+                    onChange={(e) => setIiThen(e.target.value)}
+                    placeholder={t("stuck.intentionThenPlaceholder")}
+                  />
+                </div>
               </div>
               <Button
                 className="mt-3 w-full"
                 variant={intentionSaved ? "outline" : "secondary"}
                 size="sm"
                 onClick={handleSaveIntention}
-                disabled={savingIntention || intentionSaved}
+                disabled={
+                  savingIntention ||
+                  intentionSaved ||
+                  !iiIf.trim() ||
+                  !iiThen.trim()
+                }
               >
                 <Save className="h-4 w-4" />
                 {intentionSaved

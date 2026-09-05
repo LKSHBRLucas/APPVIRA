@@ -172,6 +172,20 @@ export function pickIntervention(input: ObstacleInput): InterventionPlan {
     );
   }
 
+  // Saved-intention signal: if the user already has an active implementation
+  // intention whose trigger matches a selected obstacle, boost
+  // implementation_intention so stored plans influence future combinations.
+  const triggers = new Set(
+    (input.intentionTriggers ?? []).filter((t): t is string => !!t),
+  );
+  const matchedIntention = effective.some((code) => triggers.has(code));
+  if (matchedIntention) {
+    scores.set(
+      "implementation_intention",
+      (scores.get("implementation_intention") ?? 0) + 2,
+    );
+  }
+
   let winner: InterventionCode = "micro_start";
   let best = -1;
   for (const intervention of FIRST_WINS) {
@@ -189,7 +203,7 @@ export function pickIntervention(input: ObstacleInput): InterventionPlan {
     ctaLabel: copy.ctaLabel,
     firstStep: input.task?.firstStep ?? undefined,
     matchedObstacles: effective,
-    ruleId: `rules_v2:${[...effective].sort().join("+")}`,
+    ruleId: `rules_v2:${[...effective].sort().join("+")}${matchedIntention ? ":ii" : ""}`,
   };
 
   if (winner === "micro_start") {

@@ -67,4 +67,6 @@ export interface ObstacleInput {
   };
   /** Current energy level 1–5 when provided by a check-in. */
   energy?: number;
+  /** Trigger codes of the user's saved, active implementation intentions. */
+  intentionTriggers?: Array<string | null>;
 }

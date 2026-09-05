@@ -135,3 +135,33 @@ describe("recurrence → implementation_intention", () => {
     expect(hasRecurrence("um dia normal")).toBe(false);
   });
 });
+
+describe("saved implementation intentions influence the engine", () => {
+  it("boosts implementation_intention when a selected obstacle matches a saved trigger", () => {
+    // no_motivation alone votes micro_start(3) vs intention(1). With a saved
+    // plan triggered by no_motivation, intention receives +2 → 3 (tie with
+    // micro_start) and FIRST_WINS picks implementation_intention.
+    const plan = pickIntervention(
+      base({ code: "no_motivation", intentionTriggers: ["no_motivation"] }),
+    );
+    expect(plan.intervention.code).toBe("implementation_intention");
+    expect(plan.ruleId).toContain(":ii");
+  });
+
+  it("does not boost when the saved trigger does not match the selection", () => {
+    const plan = pickIntervention(
+      base({ code: "no_motivation", intentionTriggers: ["phone"] }),
+    );
+    expect(plan.intervention.code).toBe("micro_start");
+  });
+
+  it("ignores null/empty saved triggers", () => {
+    const plan = pickIntervention(
+      base({
+        code: "no_motivation",
+        intentionTriggers: [null, "", "no_motivation"],
+      }),
+    );
+    expect(plan.intervention.code).toBe("implementation_intention");
+  });
+});

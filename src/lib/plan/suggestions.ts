@@ -1,10 +1,51 @@
 import type { ProcrastinationProfileCode } from "@/lib/behaviors/profiles";
 import type { BehaviorInsights } from "@/lib/behaviors/insights";
+import type { ObstacleCode } from "@/lib/intervention/types";
+import { OBSTACLE_TO_PROFILE } from "@/lib/behaviors/profiles";
 
 export interface PlanSuggestion {
   ifPart: string;
   thenPart: string;
   triggerCode: string | null;
+}
+
+export interface TaskContext {
+  title: string;
+  firstStep?: string | null;
+}
+
+/**
+ * Builds a concrete SE → ENTÃO implementation plan from an abstract task.
+ * The trigger comes from the procrastination profile (rule-based); the action
+ * is bound to the task's first step when available, otherwise to a concrete,
+ * observable behavior. Returns the plan plus the normalized SE/ENTÃO halves
+ * ready to edit in the UI.
+ */
+export function buildImplementationPlan(
+  obstacleCodes: ObstacleCode[],
+  task?: TaskContext | null,
+): PlanSuggestion {
+  const primary = obstacleCodes[0] ?? "other";
+  const base =
+    suggestIntentions(OBSTACLE_TO_PROFILE[primary], null)[0] ??
+    ({
+      ifPart: `SE eu perceber que estou travando com "${primary.replaceAll("_", " ")}"`,
+      thenPart: `ENTÃO abro a tarefa "${task?.title ?? "atual"}" e começo por 5 minutos`,
+      triggerCode: primary,
+    } satisfies PlanSuggestion);
+
+  const taskName = task?.title?.trim();
+  const step = task?.firstStep?.trim();
+
+  const thenPart = step
+    ? `ENTÃO executo o primeiro passo: ${step}`
+    : taskName
+      ? `ENTÃO abro "${taskName}" e faço 5 minutos`
+      : base.thenPart.replace(/^ENTÃO /i, "ENTÃO abro a tarefa e faço 5 minutos");
+
+  const ifPart = base.ifPart.replace(/^SE /i, "SE ");
+
+  return { ifPart, thenPart, triggerCode: primary };
 }
 
 /**
