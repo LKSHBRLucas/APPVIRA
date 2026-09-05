@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { trackEvent } from "@enter-pro/analytics-sdk";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -148,6 +149,16 @@ export default function StuckPage() {
       setIiIf(intentionPlan.ifPart);
       setIiThen(intentionPlan.thenPart);
     }
+
+    trackEvent("obstacles_selected", {
+      eventType: "custom",
+      properties: {
+        obstacle_codes: selectedCodes.join(","),
+        obstacle_count: selectedCodes.length,
+        task_selected: Boolean(taskId),
+      },
+    });
+
     setStep("intervention");
   };
 
@@ -201,6 +212,14 @@ export default function StuckPage() {
       intervention_code: plan.intervention.code,
       accepted: true,
       outcome: "started",
+    });
+
+    trackEvent("intervention_applied", {
+      eventType: "custom",
+      properties: {
+        intervention_code: plan.intervention.code,
+        duration_min: plan.intervention.durationMin,
+      },
     });
 
     setStarting(false);

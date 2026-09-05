@@ -3,6 +3,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { trackEvent } from "@enter-pro/analytics-sdk";
 import { Button } from "@/components/ui/button";
 import { useTimer } from "@/hooks/use-timer";
 import { useSession } from "@/hooks/use-sessions";
@@ -87,6 +88,14 @@ export default function SessionPage() {
         patch: { actual_start: startedAtRef.current, status: "started" },
       });
       await logEvent.mutateAsync({ sessionId: session.id, type: "task_started" });
+
+      trackEvent("session_started", {
+        eventType: "custom",
+        properties: {
+          intervention_code: session.intervention_code ?? "none",
+          duration_planned_min: plannedMin,
+        },
+      });
     } catch {
       toast.error(t("session.saveError"));
     }
@@ -129,6 +138,17 @@ export default function SessionPage() {
       });
 
       await updateInterventionOutcome(session.user_id, session.id, outcome);
+
+      trackEvent(outcome === "completed" ? "session_completed" : "session_abandoned", {
+        eventType: outcome === "completed" ? "conversion" : "custom",
+        properties: {
+          intervention_code: session.intervention_code ?? "none",
+          duration_actual_min: duration,
+          accomplished,
+          intervention_helped: helped,
+          feeling,
+        },
+      });
 
       if (outcome === "completed") {
         await logEvent.mutateAsync({ sessionId: session.id, type: "task_completed" });
