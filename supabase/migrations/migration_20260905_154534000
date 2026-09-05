@@ -1,0 +1,25 @@
+-- ============ SESSION_OBSTACLES (multi-obstacle per session) ============
+-- Allows up to N obstacles per session (UI allows up to 3). Each row links a
+-- session to one catalog obstacle. Keep sessions.obstacle_code as the primary
+-- obstacle for backward compatibility; this table stores the full combination
+-- for analytics and future adaptive models.
+
+create table public.session_obstacles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  session_id uuid not null references public.sessions(id) on delete cascade,
+  obstacle_code text not null references public.obstacles(code),
+  created_at timestamptz not null default now(),
+  unique (session_id, obstacle_code)
+);
+
+alter table public.session_obstacles enable row level security;
+create policy "own session_obstacles" on public.session_obstacles
+  for select to authenticated using (user_id = auth.uid());
+create policy "insert own session_obstacles" on public.session_obstacles
+  for insert to authenticated with check (user_id = auth.uid());
+create policy "delete own session_obstacles" on public.session_obstacles
+  for delete to authenticated using (user_id = auth.uid());
+
+create index session_obstacles_session_idx on public.session_obstacles(session_id);
+create index session_obstacles_obstacle_idx on public.session_obstacles(obstacle_code);

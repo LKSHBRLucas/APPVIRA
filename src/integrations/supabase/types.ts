@@ -3901,6 +3901,43 @@ export type Database = {
           },
         ]
       }
+      session_obstacles: {
+        Row: {
+          created_at: string
+          id: string
+          obstacle_code: string
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          obstacle_code: string
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          obstacle_code?: string
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_obstacles_obstacle_code_fkey"
+            columns: ["obstacle_code"]
+            referencedRelation: "obstacles"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "session_obstacles_session_id_fkey"
+            columns: ["session_id"]
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sessions: {
         Row: {
           actual_start: string | null

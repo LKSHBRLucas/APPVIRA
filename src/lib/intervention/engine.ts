@@ -1,134 +1,117 @@
 import { INTERVENTION_CATALOG } from "./catalog";
-import type { InterventionPlan, ObstacleCode, ObstacleInput } from "./types";
-
-type Engine = Record<
+import type {
+  InterventionCode,
+  InterventionPlan,
   ObstacleCode,
-  (input: ObstacleInput) => InterventionPlan
->;
+  ObstacleInput,
+} from "./types";
 
-const byCode = (code: keyof typeof INTERVENTION_CATALOG) =>
-  INTERVENTION_CATALOG[code];
+const byCode = (code: InterventionCode) => INTERVENTION_CATALOG[code];
 
 /**
- * Deterministic rule-based engine: maps an obstacle (plus optional context like
- * energy or the task's first step) to a single intervention and a concrete CTA.
- * Pure function — no I/O, testable.
+ * Deterministic rule engine (V2 — combination-aware).
+ *
+ * Each selected obstacle casts weighted votes toward one or more interventions.
+ * The engine sums the votes across the whole combination (up to 3 obstacles)
+ * and the intervention with the highest score wins. Ties are broken by a fixed
+ * priority order (FIRST_WINS), so the outcome is 100% deterministic.
+ *
+ * A recurring-failure marker in the note adds a bonus vote for
+ * implementation_intention — the only free-text signal used today. Swapping
+ * this rule table for a data-driven model later requires no flow changes: the
+ * engine surface (`pickIntervention`) and the persisted inputs (matchedObstacles
+ * in session_obstacles) already capture everything a model would need.
  */
-const engine: Engine = {
-  task_too_big: ({ task }) => ({
-    intervention: byCode("micro_start"),
-    message:
-      "A tarefa parece grande porque você está tentando enxergar tudo de uma vez. Reduza para uma sessão mínima.",
-    ctaLabel: "Começar com 15 min",
-    firstStep: task?.firstStep ?? "Fazer apenas o início da tarefa por 15 minutos",
-  }),
+const OBSTACLE_VOTES: Record<
+  ObstacleCode,
+  Array<[InterventionCode, number]>
+> = {
+  task_too_big: [
+    ["micro_start", 3],
+    ["first_step", 1],
+  ],
+  no_start_point: [
+    ["first_step", 3],
+    ["micro_start", 1],
+  ],
+  phone: [["distraction_removal", 3]],
+  distracted: [
+    ["distraction_removal", 3],
+    ["restructuring", 1],
+  ],
+  tired: [["micro_start", 3]],
+  no_motivation: [
+    ["micro_start", 3],
+    ["implementation_intention", 1],
+  ],
+  perfectionism: [["cognitive_restructuring", 3]],
+  fear_of_failure: [
+    ["cognitive_restructuring", 3],
+    ["first_step", 1],
+  ],
+  anxious: [
+    ["cognitive_restructuring", 3],
+    ["micro_start", 1],
+  ],
+  no_environment: [
+    ["restructuring", 3],
+    ["distraction_removal", 1],
+  ],
+  bad_time: [["replan", 3]],
+  other: [["micro_start", 2]],
+};
 
-  no_start_point: ({ task }) => ({
-    intervention: byCode("first_step"),
+/** Deterministic tie-break: highest priority wins when scores are equal. */
+const FIRST_WINS: InterventionCode[] = [
+  "distraction_removal",
+  "cognitive_restructuring",
+  "first_step",
+  "implementation_intention",
+  "micro_start",
+  "restructuring",
+  "replan",
+  "recovery",
+];
+
+const MESSAGES: Record<InterventionCode, { message: string; ctaLabel: string }> = {
+  micro_start: {
+    message:
+      "A barreira fica menor quando a meta fica pequena. Vamos fazer uma sessão mínima agora.",
+    ctaLabel: "Começar com 15 min",
+  },
+  first_step: {
     message:
       "Falta um ponto de partida concreto. Vamos definir uma ação física e observável.",
     ctaLabel: "Definir e começar o primeiro passo",
-    firstStep:
-      task?.firstStep ?? "Escolher a primeira ação física (ex.: abrir o arquivo, montar o material)",
-  }),
-
-  phone: () => ({
-    intervention: byCode("distraction_removal"),
-    message:
-      "O celular está roubando a sua atenção. Remova-o do alcance antes de começar.",
-    ctaLabel: "Guardar o celular e iniciar",
-  }),
-
-  distracted: () => ({
-    intervention: byCode("distraction_removal"),
-    message:
-      "Muitos estímulos competem com a tarefa. Reduza os concorrentes antes de começar.",
-    ctaLabel: "Ativar modo foco e iniciar",
-  }),
-
-  tired: ({ energy }) => ({
-    intervention: byCode("micro_start"),
-    message:
-      "Cansaço não precisa virar desistência. Uma sessão mínima exige menos energia do que você imagina.",
-    ctaLabel: "Começar com 5–15 min",
-    ...(energy !== undefined && energy <= 2
-      ? { firstStep: "Sessão mínima de 5 minutos — só para destravar" }
-      : {}),
-  }),
-
-  no_motivation: ({ note }) => {
-    if (note && hasRecurrence(note)) {
-      return {
-        intervention: byCode("implementation_intention"),
-        message:
-          "Esse bloqueio se repete nos mesmos momentos. Automatize a decisão antes que ela aconteça.",
-        ctaLabel: "Criar plano e começar",
-        firstStep: "Escrever o plano: SE [situação], ENTÃO [primeira ação]",
-      };
-    }
-    return {
-      intervention: byCode("micro_start"),
-      message:
-        "Não dá para esperar a motivação aparecer. A motivação vem depois de começar — reduza a barreira.",
-      ctaLabel: "Começar com 5 min",
-    };
   },
-
-  perfectionism: () => ({
-    intervention: byCode("cognitive_restructuring"),
+  implementation_intention: {
     message:
-      "Feito é melhor que perfeito. Defina a versão mínima aceitável de hoje.",
-    ctaLabel: "Redefinir para a versão mínima",
-    firstStep: "Escrever qual é a versão mínima aceitável da tarefa",
-  }),
-
-  fear_of_failure: () => ({
-    intervention: byCode("cognitive_restructuring"),
+      "Esse bloqueio se repete nos mesmos momentos. Automatize a decisão com um plano SE → ENTÃO.",
+    ctaLabel: "Criar plano e começar",
+  },
+  distraction_removal: {
     message:
-      "Errar faz parte do processo. O objetivo agora é só dar o primeiro passo, não acertar de primeira.",
-    ctaLabel: "Começar mesmo assim",
-    firstStep: "Dar o primeiro passo sem exigir resultado perfeito",
-  }),
-
-  anxious: () => ({
-    intervention: byCode("cognitive_restructuring"),
+      "Estímulos concorrentes estão roubando a sua atenção. Remova a distração antes de começar.",
+    ctaLabel: "Guardar o celular e iniciar",
+  },
+  cognitive_restructuring: {
     message:
-      "Ansiedade costuma vir de exigência alta. Reduza a meta de hoje para algo iniciável.",
+      "Exigência alta aumenta o custo de começar. Redefina a meta para a versão mínima aceitável.",
     ctaLabel: "Reduzir a meta e começar",
-    firstStep: "Dividir a tarefa em um pedaço pequeno e iniciável",
-  }),
-
-  no_environment: () => ({
-    intervention: byCode("restructuring"),
+  },
+  restructuring: {
     message:
       "O ambiente está trabalhando contra você. Faça uma mudança física imediata.",
     ctaLabel: "Reestruturar o ambiente",
-    firstStep: "Deixar o material à vista e fora do alcance de distrações",
-  }),
-
-  bad_time: () => ({
-    intervention: byCode("replan"),
+  },
+  replan: {
     message:
       "O horário não combina com o seu momento. Mova a atividade, não a abandone.",
     ctaLabel: "Reagendar para agora",
-  }),
-
-  other: ({ note }) => {
-    if (note && hasRecurrence(note)) {
-      return {
-        intervention: byCode("implementation_intention"),
-        message:
-          "O padrão se repete. Automatize a decisão com um plano SE → ENTÃO antes do gatilho.",
-        ctaLabel: "Criar plano e começar",
-        firstStep: "Escrever: SE [situação], ENTÃO [primeira ação]",
-      };
-    }
-    return {
-      intervention: byCode("micro_start"),
-      message:
-        "Vamos simplificar: comece com uma sessão mínima e veja o que acontece.",
-      ctaLabel: "Começar com 10 min",
-    };
+  },
+  recovery: {
+    message: "Vamos recuperar a sessão com uma versão menor, sem culpa.",
+    ctaLabel: "Recuperar com 5 min",
   },
 };
 
@@ -152,10 +135,69 @@ export function hasRecurrence(text: string): boolean {
   return RECURRENCE_MARKERS.some((marker) => lower.includes(marker));
 }
 
+function normalizeCodes(input: ObstacleInput): ObstacleCode[] {
+  const codes = input.codes ?? (input.code ? [input.code] : []);
+  // Keep the first occurrence, cap at 3, drop "other" only when real obstacles exist.
+  const seen = new Set<ObstacleCode>();
+  const unique: ObstacleCode[] = [];
+  for (const code of codes) {
+    if (seen.has(code)) continue;
+    seen.add(code);
+    unique.push(code);
+    if (unique.length === 3) break;
+  }
+  if (unique.includes("other") && unique.length > 1) {
+    return unique.filter((c) => c !== "other");
+  }
+  return unique;
+}
+
+/** Votes for the picked intervention, plus ruleId for provenance. */
 export function pickIntervention(input: ObstacleInput): InterventionPlan {
-  const plan = engine[input.code](input);
-  return {
-    ...plan,
-    firstStep: plan.firstStep ?? input.task?.firstStep ?? undefined,
+  const codes = normalizeCodes(input);
+  const effective = codes.length > 0 ? codes : (["other"] as ObstacleCode[]);
+
+  const scores = new Map<InterventionCode, number>();
+  for (const code of effective) {
+    for (const [intervention, weight] of OBSTACLE_VOTES[code]) {
+      scores.set(intervention, (scores.get(intervention) ?? 0) + weight);
+    }
+  }
+
+  // Free-text recurrence signal adds a deterministic bonus vote.
+  if (input.note && hasRecurrence(input.note)) {
+    scores.set(
+      "implementation_intention",
+      (scores.get("implementation_intention") ?? 0) + 2,
+    );
+  }
+
+  let winner: InterventionCode = "micro_start";
+  let best = -1;
+  for (const intervention of FIRST_WINS) {
+    const score = scores.get(intervention) ?? 0;
+    if (score > best) {
+      best = score;
+      winner = intervention;
+    }
+  }
+
+  const copy = MESSAGES[winner];
+  const plan: InterventionPlan = {
+    intervention: byCode(winner),
+    message: copy.message,
+    ctaLabel: copy.ctaLabel,
+    firstStep: input.task?.firstStep ?? undefined,
+    matchedObstacles: effective,
+    ruleId: `rules_v2:${[...effective].sort().join("+")}`,
   };
+
+  if (winner === "micro_start") {
+    plan.message =
+      input.note && hasRecurrence(input.note)
+        ? "O padrão se repete: comece pequeno e quebre o ciclo hoje."
+        : plan.message;
+  }
+
+  return plan;
 }

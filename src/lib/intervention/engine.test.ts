@@ -7,7 +7,7 @@ const base = (overrides: Partial<ObstacleInput>): ObstacleInput => ({
   ...overrides,
 });
 
-describe("pickIntervention", () => {
+describe("pickIntervention (single obstacle, backward compatible)", () => {
   it("maps task_too_big to micro_start", () => {
     const plan = pickIntervention(base({ code: "task_too_big" }));
     expect(plan.intervention.code).toBe("micro_start");
@@ -33,12 +33,6 @@ describe("pickIntervention", () => {
     }
   });
 
-  it("suggests a minimal 5-min session when energy is low (tired + energy 1/2)", () => {
-    const plan = pickIntervention(base({ code: "tired", energy: 1 }));
-    expect(plan.intervention.code).toBe("micro_start");
-    expect(plan.firstStep).toContain("5 minutos");
-  });
-
   it("maps bad_time to replan and no_environment to restructuring", () => {
     expect(pickIntervention(base({ code: "bad_time" })).intervention.code).toBe("replan");
     expect(pickIntervention(base({ code: "no_environment" })).intervention.code).toBe("restructuring");
@@ -48,6 +42,76 @@ describe("pickIntervention", () => {
     expect(pickIntervention(base({ code: "other" })).intervention.code).toBe("micro_start");
   });
 
+  it("always returns a message, ctaLabel and matchedObstacles in pt-BR", () => {
+    for (const code of [
+      "tired",
+      "no_motivation",
+      "phone",
+      "task_too_big",
+      "no_start_point",
+      "anxious",
+      "fear_of_failure",
+      "perfectionism",
+      "distracted",
+      "no_environment",
+      "bad_time",
+      "other",
+    ] as const) {
+      const plan = pickIntervention(base({ code }));
+      expect(plan.message.length).toBeGreaterThan(0);
+      expect(plan.ctaLabel.length).toBeGreaterThan(0);
+      expect(plan.matchedObstacles).toContain(code);
+      expect(plan.ruleId).toContain("rules_v2");
+    }
+  });
+});
+
+describe("pickIntervention (multi-obstacle combination)", () => {
+  it("sums votes and picks the highest-scoring intervention", () => {
+    // phone(3 distraction) + perfectionism(3 cognitive) + no_start_point(3 first_step)
+    // all tie at 3 → FIRST_WINS: distraction_removal wins.
+    const plan = pickIntervention(
+      base({ codes: ["phone", "perfectionism", "no_start_point"] }),
+    );
+    expect(plan.intervention.code).toBe("distraction_removal");
+    expect(plan.matchedObstacles).toHaveLength(3);
+  });
+
+  it("reinforces the same intervention when obstacles agree", () => {
+    // tired(3 micro_start) + no_motivation(3 micro_start) = micro_start 6.
+    const plan = pickIntervention(base({ codes: ["tired", "no_motivation"] }));
+    expect(plan.intervention.code).toBe("micro_start");
+  });
+
+  it("first_step beats micro_start on no_start_point + task_too_big", () => {
+    // no_start_point(3 first_step) vs task_too_big(3 micro_start) → tie.
+    // FIRST_WINS: first_step comes before micro_start.
+    const plan = pickIntervention(base({ codes: ["no_start_point", "task_too_big"] }));
+    expect(plan.intervention.code).toBe("first_step");
+  });
+
+  it("caps the combination at 3 obstacles and dedupes", () => {
+    const plan = pickIntervention(
+      base({ codes: ["phone", "phone", "tired", "no_motivation", "bad_time"] }),
+    );
+    expect(plan.matchedObstacles).toHaveLength(3);
+    expect(plan.matchedObstacles.filter((c) => c === "phone")).toHaveLength(1);
+  });
+
+  it("drops 'other' when real obstacles were also selected", () => {
+    const plan = pickIntervention(base({ codes: ["other", "task_too_big"] }));
+    expect(plan.matchedObstacles).not.toContain("other");
+    expect(plan.intervention.code).toBe("micro_start");
+  });
+
+  it("still returns an 'other' default when nothing real is selected", () => {
+    const plan = pickIntervention(base({ codes: ["other"] }));
+    expect(plan.matchedObstacles).toEqual(["other"]);
+    expect(plan.intervention.code).toBe("micro_start");
+  });
+});
+
+describe("recurrence → implementation_intention", () => {
   it("uses implementation_intention when the note signals recurrence", () => {
     for (const code of ["no_motivation", "other"] as const) {
       const plan = pickIntervention(
@@ -69,26 +133,5 @@ describe("pickIntervention", () => {
     expect(hasRecurrence("SEMPRE travo")).toBe(true);
     expect(hasRecurrence("nunca consigo começar")).toBe(true);
     expect(hasRecurrence("um dia normal")).toBe(false);
-  });
-
-  it("always returns a message and ctaLabel in pt-BR", () => {
-    for (const code of [
-      "tired",
-      "no_motivation",
-      "phone",
-      "task_too_big",
-      "no_start_point",
-      "anxious",
-      "fear_of_failure",
-      "perfectionism",
-      "distracted",
-      "no_environment",
-      "bad_time",
-      "other",
-    ] as const) {
-      const plan = pickIntervention(base({ code }));
-      expect(plan.message.length).toBeGreaterThan(0);
-      expect(plan.ctaLabel.length).toBeGreaterThan(0);
-    }
   });
 });

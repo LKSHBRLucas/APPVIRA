@@ -1,5 +1,5 @@
-import { AlertTriangle, ArrowLeft, ArrowRight, Play, Save } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Play, Save } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import { useTasks } from "@/hooks/use-tasks";
 import { listObstacles } from "@/lib/data/catalogs";
 import { createTask } from "@/lib/data/tasks";
 import { recordInterventionResult } from "@/lib/data/intervention-results";
+import { replaceSessionObstacles } from "@/lib/data/session-obstacles";
 import { pickIntervention } from "@/lib/intervention/engine";
 import type { ObstacleCode } from "@/lib/intervention/types";
 import { OBSTACLE_TO_PROFILE } from "@/lib/behaviors/profiles";
@@ -24,15 +25,20 @@ import { cn } from "@/lib/utils";
 /**
  * Estou travado — fluxo 100% ligado ao banco (Enter Cloud), sem mock.
  * Mapa de botões → funções reais:
- *  - Chip de tarefa         → seleção local de contexto (não grava; a tarefa
- *                            escolhida é persistida na sessão ao escolher obstáculo)
- *  - Botão de obstáculo     → sessions.insert (sessão "planned" já nasce no banco)
- *                            ou sessions.update ao trocar de obstáculo
+ *  - Chip de tarefa         → seleção local de contexto (persistida na sessão ao
+ *                            escolher o obstáculo)
+ *  - Botões de obstáculo    → seleção múltipla (até 3) + sessions.insert/update
+ *                            + session_obstacles.insert (a combinação inteira)
  *  - Salvar plano Se→Então  → implementation_intentions.insert
  *  - Começar                → sessions.update (intervention_code) +
- *                            intervention_results.insert + navega para o modo foco
+ *                            intervention_results.insert (accepted=true, ou seja,
+ *                            o usuário aceitou e iniciou) + navega para o modo foco
  *    (o texto digitado vira tasks.insert quando "Começar" é pressionado)
+ *
+ * A combinação escolhida, a intervenção aplicada e o aceite ficam persistidos —
+ * base para analytics e para um futuro modelo adaptativo sem refazer o fluxo.
  */
+const MAX_OBSTACLES = 3;
 type Step = "obstacle" | "intervention";
 
 export default function StuckPage() {
@@ -50,7 +56,7 @@ export default function StuckPage() {
   const [step, setStep] = useState<Step>("obstacle");
   const [taskId, setTaskId] = useState<string | null>(incomingTaskId ?? null);
   const [note, setNote] = useState("");
-  const [obstacleCode, setObstacleCode] = useState<ObstacleCode | null>(null);
+  const [selectedCodes, setSelectedCodes] = useState<ObstacleCode[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [savingIntention, setSavingIntention] = useState(false);
@@ -63,72 +69,74 @@ export default function StuckPage() {
 
   const plannedTasks = tasks.filter((task) => task.status === "planned");
 
-  const plan = obstacleCode
-    ? pickIntervention({
-        code: obstacleCode,
-        note: note.trim() || undefined,
-        task:
-          taskId && (() => {
-            const task = tasks.find((x) => x.id === taskId);
-            return task
-              ? {
-                  id: task.id,
-                  title: task.title,
-                  firstStep: task.first_step,
-                  durationMin: task.duration_min,
-                }
-              : undefined;
-          })(),
-        energy: latest?.level,
-      })
-    : null;
+  const selectedTask = taskId ? tasks.find((x) => x.id === taskId) : null;
 
-  const intentionSuggestion = obstacleCode
-    ? suggestIntentions(OBSTACLE_TO_PROFILE[obstacleCode], null)[0] ?? null
-    : null;
+  const plan = useMemo(
+    () =>
+      selectedCodes.length > 0
+        ? pickIntervention({
+            codes: selectedCodes,
+            note: note.trim() || undefined,
+            task: selectedTask
+              ? {
+                  id: selectedTask.id,
+                  title: selectedTask.title,
+                  firstStep: selectedTask.first_step,
+                  durationMin: selectedTask.duration_min,
+                }
+              : undefined,
+            energy: latest?.level,
+          })
+        : null,
+    [selectedCodes, note, selectedTask, latest?.level],
+  );
+
+  const intentionSuggestion = useMemo(
+    () =>
+      selectedCodes[0]
+        ? (suggestIntentions(OBSTACLE_TO_PROFILE[selectedCodes[0]], null)[0] ??
+          null)
+        : null,
+    [selectedCodes],
+  );
 
   const planIsIntention = plan?.intervention.code === "implementation_intention";
 
-  /** Real call: sessions.insert (first pick) or sessions.update (changing obstacle). */
-  const handleObstaclePick = async (code: ObstacleCode) => {
-    const nextPlan = pickIntervention({
-      code,
-      note: note.trim() || undefined,
-      task:
-        taskId && (() => {
-          const task = tasks.find((x) => x.id === taskId);
-          return task
-            ? {
-                id: task.id,
-                title: task.title,
-                firstStep: task.first_step,
-                durationMin: task.duration_min,
-              }
-            : undefined;
-        })(),
-      energy: latest?.level,
+  const toggleObstacle = (code: ObstacleCode) => {
+    setSelectedCodes((prev) => {
+      if (prev.includes(code)) return prev.filter((c) => c !== code);
+      if (prev.length >= MAX_OBSTACLES) return prev;
+      return [...prev, code];
     });
+  };
+
+  /**
+   * Real calls: sessions.insert (first pick) or sessions.update (changing the
+   * selection) + session_obstacles.insert — the whole combination is persisted.
+   */
+  const handleAnalyze = async () => {
+    if (!plan || selectedCodes.length === 0) return;
+    const primaryCode = selectedCodes[0];
 
     if (sessionId) {
-      // Already have a draft session — persist the new obstacle (UPDATE).
       await patch.mutateAsync({
         id: sessionId,
-        patch: { obstacle_code: code, task_id: taskId },
+        patch: { obstacle_code: primaryCode, task_id: taskId },
       });
+      await replaceSessionObstacles(user!.id, sessionId, selectedCodes);
     } else {
-      // Real INSERT — the planned session is created in the database right now.
       const { session } = await start.mutateAsync({
         task_id: taskId,
         planned_start: new Date().toISOString(),
-        duration_planned: nextPlan.intervention.durationMin,
-        obstacle_code: code,
+        duration_planned: plan.intervention.durationMin,
+        obstacle_code: primaryCode,
         intervention_code: null,
         energy: latest?.level ?? null,
       });
       setSessionId(session.id);
+      await replaceSessionObstacles(user!.id, session.id, selectedCodes);
     }
 
-    setObstacleCode(code);
     setStep("intervention");
   };
 
@@ -140,7 +148,7 @@ export default function StuckPage() {
       await createIntention.mutateAsync({
         if_part: intentionSuggestion.ifPart,
         then_part: intentionSuggestion.thenPart,
-        trigger_code: obstacleCode,
+        trigger_code: selectedCodes[0],
       });
       setIntentionSaved(true);
       toast.success(t("stuck.intentionSaved"));
@@ -151,10 +159,9 @@ export default function StuckPage() {
 
   /** Real calls: tasks.insert (note) + sessions.update + intervention_results.insert. */
   const handleStart = async () => {
-    if (!obstacleCode || !plan || !sessionId) return;
+    if (!plan || !sessionId) return;
     setStarting(true);
 
-    // Resolve the task context: selected task, or a real task created from the note.
     let resolvedTaskId = taskId;
     if (!resolvedTaskId && note.trim()) {
       const task = await createTask(user!.id, {
@@ -167,7 +174,6 @@ export default function StuckPage() {
       resolvedTaskId = task.id;
     }
 
-    // sessions.update — stamp the intervention on the planned session.
     await patch.mutateAsync({
       id: sessionId,
       patch: {
@@ -176,11 +182,13 @@ export default function StuckPage() {
       },
     });
 
-    // intervention_results.insert — what was shown for this session.
+    // accepted=true → the user saw the intervention and pressed start.
     await recordInterventionResult(user!.id, {
       session_id: sessionId,
       task_id: resolvedTaskId,
       intervention_code: plan.intervention.code,
+      accepted: true,
+      outcome: "started",
     });
 
     setStarting(false);
@@ -189,7 +197,7 @@ export default function StuckPage() {
 
   const goBack = () => {
     setStep("obstacle");
-    // Keeping the created session as a draft — changing the obstacle later updates it.
+    // The draft session stays in the database; re-analyzing updates it.
   };
 
   return (
@@ -259,18 +267,52 @@ export default function StuckPage() {
               </div>
             )}
 
-            {obstacles.map((obstacle) => (
-              <button
-                key={obstacle.code}
-                type="button"
-                onClick={() => void handleObstaclePick(obstacle.code as ObstacleCode)}
-                className="flex w-full items-center justify-between rounded-lg border border-border bg-card px-4 py-3 text-left text-sm transition-colors hover:border-primary/50 hover:bg-muted"
-              >
-                {obstacle.label}
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
-              </button>
-            ))}
+            <div className="rounded-lg border border-border bg-card p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">{t("stuck.selectTitle")}</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedCodes.length}/{MAX_OBSTACLES}
+                </p>
+              </div>
+            </div>
+
+            {obstacles.map((obstacle) => {
+              const isSelected = selectedCodes.includes(obstacle.code as ObstacleCode);
+              const isFull = selectedCodes.length >= MAX_OBSTACLES && !isSelected;
+              return (
+                <button
+                  key={obstacle.code}
+                  type="button"
+                  onClick={() => toggleObstacle(obstacle.code as ObstacleCode)}
+                  disabled={isFull}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors",
+                    isSelected
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-card hover:bg-muted",
+                    isFull && "opacity-50",
+                  )}
+                >
+                  {obstacle.label}
+                  {isSelected ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <span className="h-4 w-4 rounded-full border border-border" />
+                  )}
+                </button>
+              );
+            })}
           </div>
+
+          <Button
+            className="mt-5 w-full"
+            size="lg"
+            onClick={handleAnalyze}
+            disabled={selectedCodes.length === 0}
+          >
+            {t("stuck.analyze")}
+            <ArrowRight className="h-4 w-4" />
+          </Button>
         </div>
       )}
 

@@ -45,10 +45,17 @@ export interface InterventionPlan {
   ctaLabel: string;
   /** Concrete first step suggested by the intervention, if any. */
   firstStep?: string;
+  /** Obstacles that were analyzed (up to 3), persisted for analytics. */
+  matchedObstacles: ObstacleCode[];
+  /** Deterministic rule identifier that produced this pick. */
+  ruleId: string;
 }
 
 export interface ObstacleInput {
-  code: ObstacleCode;
+  /** Selected obstacle(s). Single code for backward compatibility. */
+  code?: ObstacleCode;
+  /** Combination of up to 3 obstacles — the engine analyzes this list. */
+  codes?: ObstacleCode[];
   /** User-typed note / free text from step 1 of the stuck flow. */
   note?: string;
   /** Task context when available. */
