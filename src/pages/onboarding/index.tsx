@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,57 +6,38 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
-import { dominantProfile, PROFILE_CATALOG } from "@/lib/behaviors/profiles";
-import type { ObstacleCode } from "@/lib/intervention/types";
+import { useTasks } from "@/hooks/use-tasks";
 import { cn } from "@/lib/utils";
 
-const OBSTACLE_OPTIONS: { code: ObstacleCode; labelKey: string }[] = [
-  { code: "phone", labelKey: "onboarding.obstacle.phone" },
-  { code: "task_too_big", labelKey: "onboarding.obstacle.taskTooBig" },
-  { code: "no_start_point", labelKey: "onboarding.obstacle.noStartPoint" },
-  { code: "perfectionism", labelKey: "onboarding.obstacle.perfectionism" },
-  { code: "fear_of_failure", labelKey: "onboarding.obstacle.fearOfFailure" },
-  { code: "tired", labelKey: "onboarding.obstacle.tired" },
-  { code: "no_motivation", labelKey: "onboarding.obstacle.noMotivation" },
-  { code: "distracted", labelKey: "onboarding.obstacle.distracted" },
-];
-
-const STEPS = ["name", "routine", "goal", "obstacles"] as const;
+const STEPS = ["name", "firstTask"] as const;
 type Step = (typeof STEPS)[number];
 
+/**
+ * Short onboarding: name, then create the first task in the same flow.
+ * Goal: a task created in under a minute. Nothing else.
+ */
 export default function OnboardingPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { profile, update } = useProfile();
+  const { create: createTask } = useTasks();
 
   const [stepIndex, setStepIndex] = useState(0);
   const [name, setName] = useState("");
-  const [workStart, setWorkStart] = useState("09:00");
-  const [workEnd, setWorkEnd] = useState("18:00");
-  const [sleepTime, setSleepTime] = useState("23:00");
-  const [mainGoal, setMainGoal] = useState("");
-  const [selectedObstacles, setSelectedObstacles] = useState<ObstacleCode[]>([]);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [firstStep, setFirstStep] = useState("");
   const [saving, setSaving] = useState(false);
 
   const step = STEPS[stepIndex];
 
   const canNext = useMemo(() => {
     if (step === "name") return name.trim().length > 0;
-    if (step === "goal") return mainGoal.trim().length > 0;
-    if (step === "obstacles") return selectedObstacles.length > 0;
-    return true;
-  }, [step, name, mainGoal, selectedObstacles]);
+    return taskTitle.trim().length > 0;
+  }, [step, name, taskTitle]);
 
-  // Already onboarded → straight to the app.
   if (!user) return <Navigate to="/auth" replace />;
   if (profile?.onboarding_completed) return <Navigate to="/" replace />;
-
-  const toggleObstacle = (code: ObstacleCode) => {
-    setSelectedObstacles((prev) =>
-      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
-    );
-  };
 
   const next = async () => {
     if (stepIndex < STEPS.length - 1) {
@@ -65,45 +46,36 @@ export default function OnboardingPage() {
     }
 
     setSaving(true);
-    const counts = selectedObstacles.reduce<Partial<Record<ObstacleCode, number>>>(
-      (acc, code) => {
-        acc[code] = (acc[code] ?? 0) + 1;
-        return acc;
-      },
-      {},
-    );
-    const profileType = dominantProfile(counts);
 
+    // Create the first task right here — first step included.
+    await createTask.mutateAsync({
+      title: taskTitle.trim(),
+      category: "other",
+      first_step: firstStep.trim() || null,
+      scheduled_at: null,
+      duration_min: 25,
+    });
+
+    // Mark onboarding complete.
     await update.mutateAsync({
       name: name.trim(),
-      work_start: `${workStart}:00`,
-      work_end: `${workEnd}:00`,
-      sleep_time: `${sleepTime}:00`,
-      main_goal: mainGoal.trim(),
-      procrastination_profile: profileType.code,
       onboarding_completed: true,
     });
+
     setSaving(false);
     navigate("/", { replace: true });
   };
 
-  const stepTitle =
-    step === "name"
-      ? t("onboarding.nameTitle")
-      : step === "routine"
-        ? t("onboarding.routineTitle")
-        : step === "goal"
-          ? t("onboarding.goalTitle")
-          : t("onboarding.obstacleTitle");
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!canNext) return;
+    void next();
+  };
 
+  const stepTitle =
+    step === "name" ? t("onboarding.nameTitle") : t("onboarding.taskTitle");
   const stepHint =
-    step === "name"
-      ? t("onboarding.nameHint")
-      : step === "routine"
-        ? t("onboarding.routineHint")
-        : step === "goal"
-          ? t("onboarding.goalHint")
-          : t("onboarding.obstacleHint");
+    step === "name" ? t("onboarding.nameHint") : t("onboarding.taskHint");
 
   return (
     <div className="flex min-h-full flex-col bg-gradient-subtle px-4 pt-10 pb-6">
@@ -128,7 +100,7 @@ export default function OnboardingPage() {
         <h1 className="text-2xl font-bold tracking-tight">{stepTitle}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{stepHint}</p>
 
-        <div className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           {step === "name" && (
             <div className="space-y-2">
               <Label htmlFor="onboarding-name">{t("onboarding.nameLabel")}</Label>
@@ -142,71 +114,33 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {step === "routine" && (
-            <div className="grid grid-cols-2 gap-3">
+          {step === "firstTask" && (
+            <>
               <div className="space-y-2">
-                <Label htmlFor="onboarding-start">{t("onboarding.workStart")}</Label>
+                <Label htmlFor="onboarding-task">{t("onboarding.taskLabel")}</Label>
                 <Input
-                  id="onboarding-start"
-                  type="time"
-                  value={workStart}
-                  onChange={(e) => setWorkStart(e.target.value)}
+                  id="onboarding-task"
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  placeholder={t("onboarding.taskPlaceholder")}
+                  autoFocus
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="onboarding-end">{t("onboarding.workEnd")}</Label>
+                <Label htmlFor="onboarding-first-step">{t("onboarding.firstStepLabel")}</Label>
                 <Input
-                  id="onboarding-end"
-                  type="time"
-                  value={workEnd}
-                  onChange={(e) => setWorkEnd(e.target.value)}
+                  id="onboarding-first-step"
+                  value={firstStep}
+                  onChange={(e) => setFirstStep(e.target.value)}
+                  placeholder={t("onboarding.firstStepPlaceholder")}
                 />
+                <p className="text-xs text-muted-foreground">
+                  {t("onboarding.firstStepHint")}
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="onboarding-sleep">{t("onboarding.sleepTime")}</Label>
-                <Input
-                  id="onboarding-sleep"
-                  type="time"
-                  value={sleepTime}
-                  onChange={(e) => setSleepTime(e.target.value)}
-                />
-              </div>
-            </div>
+            </>
           )}
-
-          {step === "goal" && (
-            <div className="space-y-2">
-              <Label htmlFor="onboarding-goal">{t("onboarding.goalLabel")}</Label>
-              <Input
-                id="onboarding-goal"
-                value={mainGoal}
-                onChange={(e) => setMainGoal(e.target.value)}
-                placeholder={t("onboarding.goalPlaceholder")}
-                autoFocus
-              />
-            </div>
-          )}
-
-          {step === "obstacles" && (
-            <div className="space-y-2">
-              {OBSTACLE_OPTIONS.map(({ code, labelKey }) => (
-                <button
-                  key={code}
-                  type="button"
-                  onClick={() => toggleObstacle(code)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors",
-                    selectedObstacles.includes(code)
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-card hover:bg-muted",
-                  )}
-                >
-                  {t(labelKey)}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        </form>
       </div>
 
       <div className="mx-auto w-full max-w-md">
