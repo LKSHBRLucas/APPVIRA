@@ -1,5 +1,7 @@
 /** Domain types for the intervention engine (VIRA). */
 
+import type { PersonalizationContext } from "@/lib/personalization/context";
+
 /** Obstacle codes — mirrored from the `obstacles` catalog seed. */
 export type ObstacleCode =
   | "tired"
@@ -72,13 +74,21 @@ export interface ObstacleInput {
 }
 
 /**
- * Contract every intervention selector must honor. Today the deterministic
- * rules implement it; tomorrow an AI/adaptive model can implement the same
- * interface and be swapped in via getInterventionSelector() without touching
- * the flow (stuck page, session creation, persistence).
+ * Contract every intervention selector must honor. The deterministic rules
+ * implement it today; the personalized selector (AI-backed, with rules as
+ * fallback) implements the same interface, so the flow (stuck page, session
+ * creation, persistence) never changes.
  */
 export interface InterventionSelector {
-  /** Stable identifier recorded for analytics, e.g. "rules-v2" or "model-v1". */
+  /** Stable identifier recorded for analytics, e.g. "rules-v2" or "personalized-v1". */
   id: string;
   pick(input: ObstacleInput): InterventionPlan;
+  /**
+   * Optional async personalized pick backed by real user data + an AI model.
+   * Implementations must fall back to the deterministic rules on any failure.
+   */
+  pickPersonalized?(
+    input: ObstacleInput,
+    context: PersonalizationContext,
+  ): Promise<{ plan: InterventionPlan; personalized: boolean }>;
 }

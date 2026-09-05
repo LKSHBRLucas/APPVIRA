@@ -153,6 +153,25 @@ function normalizeCodes(input: ObstacleInput): ObstacleCode[] {
   return unique;
 }
 
+/** Build a plan for a specific intervention (shared by rules and AI selectors). */
+export function buildPlan(
+  winner: InterventionCode,
+  input: ObstacleInput,
+  messageOverride?: string,
+): InterventionPlan {
+  const codes = normalizeCodes(input);
+  const effective = codes.length > 0 ? codes : (["other"] as ObstacleCode[]);
+  const copy = MESSAGES[winner];
+  return {
+    intervention: byCode(winner),
+    message: messageOverride ?? copy.message,
+    ctaLabel: copy.ctaLabel,
+    firstStep: input.task?.firstStep ?? undefined,
+    matchedObstacles: effective,
+    ruleId: winner,
+  };
+}
+
 /** Votes for the picked intervention, plus ruleId for provenance. */
 export function pickIntervention(input: ObstacleInput): InterventionPlan {
   const codes = normalizeCodes(input);
@@ -197,15 +216,8 @@ export function pickIntervention(input: ObstacleInput): InterventionPlan {
     }
   }
 
-  const copy = MESSAGES[winner];
-  const plan: InterventionPlan = {
-    intervention: byCode(winner),
-    message: copy.message,
-    ctaLabel: copy.ctaLabel,
-    firstStep: input.task?.firstStep ?? undefined,
-    matchedObstacles: effective,
-    ruleId: `rules_v2:${[...effective].sort().join("+")}${matchedIntention ? ":ii" : ""}`,
-  };
+  const plan = buildPlan(winner, input);
+  plan.ruleId = `rules_v2:${[...effective].sort().join("+")}${matchedIntention ? ":ii" : ""}`;
 
   if (winner === "micro_start") {
     plan.message =

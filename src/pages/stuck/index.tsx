@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, Play, Save } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Loader2, Play, Save, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -10,14 +10,15 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { useCheckin } from "@/hooks/use-checkin";
 import { useIntentions } from "@/hooks/use-intentions";
+import { usePersonalizationData } from "@/hooks/use-personalization";
 import { useSessionMutations } from "@/hooks/use-session-mutations";
 import { useTasks } from "@/hooks/use-tasks";
 import { listObstacles } from "@/lib/data/catalogs";
 import { createTask } from "@/lib/data/tasks";
 import { recordInterventionResult } from "@/lib/data/intervention-results";
 import { replaceSessionObstacles } from "@/lib/data/session-obstacles";
-import { getInterventionSelector } from "@/lib/intervention/engine";
-import type { ObstacleCode } from "@/lib/intervention/types";
+import { pickPersonalized } from "@/lib/intervention/personalized";
+import type { InterventionPlan, ObstacleCode } from "@/lib/intervention/types";
 import { buildImplementationPlan } from "@/lib/plan/suggestions";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,9 @@ import { cn } from "@/lib/utils";
  *                            escolher o obstáculo)
  *  - Botões de obstáculo    → seleção múltipla (até 3) + sessions.insert/update
  *                            + session_obstacles.insert (a combinação inteira)
+ *  - Análise                → pickPersonalized: dados reais do usuário (sessões
+ *                            + check-ins) enviados ao modelo de IA via função
+ *                            de backend; regras determinísticas como fallback.
  *  - Salvar plano Se→Então  → implementation_intentions.insert (formulário
  *                            editável pré-preenchido a partir da tarefa abstrata)
  *  - Começar                → sessions.update (intervention_code) +
@@ -52,6 +56,7 @@ export default function StuckPage() {
   const { latest } = useCheckin();
   const { start, patch } = useSessionMutations();
   const { intentions, create: createIntention } = useIntentions();
+  const { context } = usePersonalizationData();
 
   const incomingTaskId = (location.state as { taskId?: string } | null)?.taskId;
 
@@ -65,6 +70,9 @@ export default function StuckPage() {
   const [intentionSaved, setIntentionSaved] = useState(false);
   const [iiIf, setIiIf] = useState("");
   const [iiThen, setIiThen] = useState("");
+  const [plan, setPlan] = useState<InterventionPlan | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [personalized, setPersonalized] = useState(false);
 
   const { data: obstacles = [] } = useQuery({
     queryKey: ["obstacles"],
@@ -80,27 +88,6 @@ export default function StuckPage() {
         .filter((i) => i.active)
         .map((i) => i.trigger_code),
     [intentions],
-  );
-
-  const plan = useMemo(
-    () =>
-      selectedCodes.length > 0
-        ? getInterventionSelector().pick({
-            codes: selectedCodes,
-            note: note.trim() || undefined,
-            task: selectedTask
-              ? {
-                  id: selectedTask.id,
-                  title: selectedTask.title,
-                  firstStep: selectedTask.first_step,
-                  durationMin: selectedTask.duration_min,
-                }
-              : undefined,
-            energy: latest?.level,
-            intentionTriggers,
-          })
-        : null,
-    [selectedCodes, note, selectedTask, latest?.level, intentionTriggers],
   );
 
   const planIsIntention = plan?.intervention.code === "implementation_intention";
@@ -122,44 +109,73 @@ export default function StuckPage() {
   };
 
   const handleAnalyze = async () => {
-    if (!plan || selectedCodes.length === 0) return;
+    if (selectedCodes.length === 0) return;
     const primaryCode = selectedCodes[0];
+    setAnalyzing(true);
 
-    if (sessionId) {
-      await patch.mutateAsync({
-        id: sessionId,
-        patch: { obstacle_code: primaryCode, task_id: taskId },
+    try {
+      // Personalized pick first: real user data (sessions + check-ins) fed to
+      // the AI model via the backend function; deterministic rules as fallback.
+      const { plan: aiPlan, personalized: aiPick } = await pickPersonalized(
+        {
+          codes: selectedCodes,
+          note: note.trim() || undefined,
+          task: selectedTask
+            ? {
+                id: selectedTask.id,
+                title: selectedTask.title,
+                firstStep: selectedTask.first_step,
+                durationMin: selectedTask.duration_min,
+              }
+            : undefined,
+          energy: latest?.level,
+          intentionTriggers,
+        },
+        context,
+      );
+      setPlan(aiPlan);
+      setPersonalized(aiPick);
+
+      if (sessionId) {
+        await patch.mutateAsync({
+          id: sessionId,
+          patch: { obstacle_code: primaryCode, task_id: taskId },
+        });
+        await replaceSessionObstacles(user!.id, sessionId, selectedCodes);
+      } else {
+        const { session } = await start.mutateAsync({
+          task_id: taskId,
+          planned_start: new Date().toISOString(),
+          duration_planned: aiPlan.intervention.durationMin,
+          obstacle_code: primaryCode,
+          intervention_code: null,
+          energy: latest?.level ?? null,
+        });
+        setSessionId(session.id);
+        await replaceSessionObstacles(user!.id, session.id, selectedCodes);
+      }
+
+      // Pre-fill the editable SE → ENTÃO form from the abstract task.
+      if (intentionPlan) {
+        setIiIf(intentionPlan.ifPart);
+        setIiThen(intentionPlan.thenPart);
+      }
+
+      trackEvent("obstacles_selected", {
+        eventType: "custom",
+        properties: {
+          obstacle_codes: selectedCodes.join(","),
+          obstacle_count: selectedCodes.length,
+          task_selected: Boolean(taskId),
+        },
       });
-      await replaceSessionObstacles(user!.id, sessionId, selectedCodes);
-    } else {
-      const { session } = await start.mutateAsync({
-        task_id: taskId,
-        planned_start: new Date().toISOString(),
-        duration_planned: plan.intervention.durationMin,
-        obstacle_code: primaryCode,
-        intervention_code: null,
-        energy: latest?.level ?? null,
-      });
-      setSessionId(session.id);
-      await replaceSessionObstacles(user!.id, session.id, selectedCodes);
+
+      setStep("intervention");
+    } catch {
+      toast.error(t("stuck.analyzeError"));
+    } finally {
+      setAnalyzing(false);
     }
-
-    // Pre-fill the editable SE → ENTÃO form from the abstract task.
-    if (intentionPlan) {
-      setIiIf(intentionPlan.ifPart);
-      setIiThen(intentionPlan.thenPart);
-    }
-
-    trackEvent("obstacles_selected", {
-      eventType: "custom",
-      properties: {
-        obstacle_codes: selectedCodes.join(","),
-        obstacle_count: selectedCodes.length,
-        task_selected: Boolean(taskId),
-      },
-    });
-
-    setStep("intervention");
   };
 
   /** Real call: implementation_intentions.insert with the user's edited plan. */
@@ -339,10 +355,14 @@ export default function StuckPage() {
             className="mt-5 w-full"
             size="lg"
             onClick={handleAnalyze}
-            disabled={selectedCodes.length === 0}
+            disabled={selectedCodes.length === 0 || analyzing}
           >
-            {t("stuck.analyze")}
-            <ArrowRight className="h-4 w-4" />
+            {analyzing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowRight className="h-4 w-4" />
+            )}
+            {analyzing ? t("stuck.analyzing") : t("stuck.analyze")}
           </Button>
         </div>
       )}
@@ -353,6 +373,12 @@ export default function StuckPage() {
           <p className="mt-1 text-sm text-muted-foreground">{t("stuck.planHint")}</p>
 
           <div className="mt-5 rounded-xl border border-primary/30 bg-primary/5 p-5">
+            {personalized && (
+              <span className="mb-2 inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                <Sparkles className="h-3 w-3" />
+                {t("stuck.personalized")}
+              </span>
+            )}
             <p className="text-xs font-semibold uppercase tracking-wider text-primary">
               {plan.intervention.name}
             </p>

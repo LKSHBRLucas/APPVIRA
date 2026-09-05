@@ -1,8 +1,9 @@
-# Motor de Intervenção — Regras Determinísticas (VIRA)
+# Motor de Intervenção — Regras Determinísticas + Personalização com IA (VIRA)
 
-> Fase atual: **regras determinísticas, sem IA**. O motor é isolado atrás da
-> interface `InterventionSelector` para que, no futuro, as regras possam ser
-> substituídas por um modelo adaptativo/IA sem alterar o fluxo principal.
+> Fase atual: **regras determinísticas com personalização via IA**. O fluxo usa o
+> seletor personalizado (`personalizedSelector`), que chama o modelo (GPT 5.6
+> Luna) com o contexto real do usuário e cai nas regras determinísticas se a IA
+> falhar. O motor fica isolado atrás da interface `InterventionSelector`.
 
 ## Visão geral
 
@@ -22,8 +23,13 @@ Tudo é **determinístico**: a mesma entrada sempre produz a mesma saída.
 |---|---|
 | `src/lib/intervention/types.ts` | Códigos de obstáculo/intervenção, `InterventionPlan`, `InterventionSelector` |
 | `src/lib/intervention/catalog.ts` | Catálogo das 8 intervenções (espelha o seed do banco) |
-| `src/lib/intervention/engine.ts` | **Regras**: votação ponderada + desempate + bônus |
+| `src/lib/intervention/engine.ts` | **Regras**: votação ponderada + desempate + bônus + `buildPlan` |
 | `src/lib/intervention/engine.test.ts` | Testes unitários do processo de decisão |
+| `src/lib/intervention/personalized.ts` | **Seletor personalizado**: chama a função de backend e faz fallback para as regras |
+| `src/lib/personalization/context.ts` | Constrói o contexto compacto do usuário a partir de dados reais |
+| `src/lib/personalization/context.test.ts` | Testes do construtor de contexto |
+| `src/hooks/use-personalization.ts` | Busca sessões + check-ins reais e expõe o contexto |
+| `supabase/functions/intervention-select/index.ts` | Função de backend que chama o modelo e valida o código |
 | `src/lib/plan/suggestions.ts` | Gerador de plano Se→Então a partir da tarefa |
 | `src/lib/data/session-obstacles.ts` | Persistência da combinação de obstáculos |
 | `src/pages/stuck/index.tsx` | Fluxo que consome o motor e persiste no banco |
@@ -100,14 +106,36 @@ distraction_removal > cognitive_restructuring > first_step
 | Conclusão/abandono | `sessions.status` + `session_events` | check-in pós-sessão |
 | Duração real | `focus_sessions.duration_actual` | fim da sessão |
 
-## Preparação para IA (troca futura)
+## Personalização com IA (implementada)
 
-O fluxo (página `/stuck`) chama **somente** `getInterventionSelector().pick(...)`.
-Para trocar regras por IA/adaptativo:
+O fluxo `/stuck` chama `pickPersonalized(input, context)` em
+`src/lib/intervention/personalized.ts`:
 
-1. Implementar a interface `InterventionSelector` (`id` + `pick`).
-2. Trocar o retorno de `getInterventionSelector()` em `src/lib/intervention/engine.ts`.
-3. Nada mais muda — UI, persistência e métricas já leem `InterventionPlan`.
+1. **Contexto real** — `usePersonalizationData` busca as sessões e check-ins do
+   usuário e `buildPersonalizationContext` agrega: total de sessões, iniciadas,
+   concluídas, frequência de obstáculos, histórico de cada intervenção (uso +
+   taxa de conclusão) e resumo dos check-ins (concluiu/ajudou/sentimento). Tudo
+   vem de `sessions` e `focus_sessions` no Enter Cloud — sem mock.
+2. **Função de backend** — `intervention-select` envia obstáculos + nota + tarefa
+   + contexto para o modelo (`openai/gpt-5.6-luna`, `stream: false`) com um
+   prompt que restringe a escolha aos 8 códigos válidos e exige resposta JSON
+   `{ code, rationale }`. O código é validado no servidor.
+3. **Fallback determinístico** — se a chamada falhar (rede, créditos, código
+   inválido), `pickPersonalized` retorna o resultado de `rulesSelector.pick(input)`.
+   O fluxo nunca fica bloqueado.
+4. **Proveniência** — o plano da IA carrega `ruleId = "model:gpt-5.6-luna"`;
+   o plano das regras carrega `rules_v2:...`. Assim é possível comparar o
+   desempenho (conclusão) entre modelo e regras.
 
-O `ruleId` (ex.: `rules_v2:phone+task_too_big:ii`) fica registrado para comparar
-desempenho entre regras e modelo futuro.
+A mensagem exibida ao usuário vem do `rationale` do modelo (em pt-BR) quando a
+IA responde; nome/CTA/duração vêm do catálogo (`buildPlan`).
+
+## Preparação para troca futura
+
+O fluxo conversa com o seletor por serviço (`pickPersonalized`) e pela interface
+`InterventionSelector`. Para trocar o modelo: alterar `MODEL` na função de
+backend e `MODEL_TAG` em `personalized.ts`. Para voltar 100% às regras: chamar
+`getInterventionSelector().pick(...)` no fluxo.
+
+O `ruleId` (ex.: `rules_v2:phone+task_too_big:ii` ou `model:gpt-5.6-luna`) fica
+registrado para comparar desempenho entre regras e modelo.
