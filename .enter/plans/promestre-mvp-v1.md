@@ -1,182 +1,227 @@
-# VIRA — MVP V1: arquitetura, schema e execução incremental
+# VIRA — Fase de Produção: estabilização, configurações, documentação e preparação para beta
 
 ## Contexto
 
-O usuário (pt-BR) validou: **continuar em React + Vite, mobile-first, PWA**. Nada de React Native/Expo. Requisitos explícitos:
+O app está funcional (auth, onboarding, tarefas, fluxo "Estou travado" com motor de
+intervenção determinístico + personalização por IA, modo foco, check-in, dashboard,
+assistente com IA, analytics). Falta a fase de produção: remover sobras de template e
+mock, padronizar erros/loading/mensagens, validar formulários, proteger contra ações
+duplicadas, melhorar performance e responsividade, criar a tela de Configurações,
+documentar a arquitetura e deixar tudo pronto para testes beta/publicação.
 
-- Código **modular em TypeScript**; **backend real** (auth, banco, RLS, migrations, backend functions).
-- **Nenhuma tela ilustrativa nem botão sem função** — todo fluxo grava/ler no Enter Cloud. Única exceção: paywall (estados free/premium reais no banco, mas upgrade sem cobrança real — documentado).
-- **Apresentar arquitetura, estrutura de pastas, schema do banco e migrations ANTES de implementar telas**; depois implementar em etapas incrementais.
-- Marca **"VIRA"** (nome e texto visíveis); identificadores de código **neutros** (app, user, task, session, intervention, dashboard, auth, settings) — branding desacoplado.
-- **IA real já incluída**: chatbot LLM (decisão anterior: modelo `alibaba/qwen-3.8-max`, protocolo `openai_chat_completions`, streaming SSE), backend function no Enter Cloud.
+Decisões confirmadas com o usuário:
+- Nova tela **/settings** como hub (Perfil, Preferências, Notificações, Privacidade);
+  item "Ajustes" na navegação; `/profile` continua (Plano + Intenções SE→ENTÃO),
+  acessível por atalho nas Configurações.
+- **Excluir conta** incluído na Privacidade, via função de backend real, com
+  confirmação em duas etapas.
+- Remover o **mock do paywall** (upgrade/cancelar sem Stripe) — vira card informativo.
 
-### Estado já concluído (não refazer)
-- Enter Cloud habilitado; **IA habilitada** (secret `AI_API_TOKEN_*` disponível via `Deno.env.get`).
-- **Migration `supabase/migrations/migration_20260903_032004000` aplicada**: 20 tabelas + RLS owner-scoped + catálogos seed (12 obstáculos, 8 intervenções) + triggers (`handle_new_user`, `ensure_subscription`, `ensure_privacy`, `set_updated_at`).
-- Auth configurado: email+password, signup habilitado, **auto-confirm ativo**, sem providers sociais.
-- `src/integrations/supabase/client.ts` + `types.ts` gerados (tipado com `Database`, contém as tabelas). **Nunca editar** (framework regrava).
-- i18n: `public/locales/en.json` é o recurso editável do preview (contém a copy "VIRA"); `src/pages/Index.tsx` é a Home atual (placeholder a ser substituído).
+## 1. Limpeza — remover mock, componentes e dependências não utilizados
 
----
+### Mock
+- `src/pages/profile/index.tsx`: remover upgrade/cancel de plano (mock). Manter leitura
+  real de `subscriptions`; exibir card estático "Plano Gratuito — pagamentos em breve".
+- `src/pages/NotFound.tsx`: remover `console.error` cru e cores cruas (`bg-gray-100`,
+  `text-blue-500`); restilizar com tokens do design system.
 
-## Arquitetura
+### Componentes shadcn não utilizados (0 imports em código de app) — deletar
+`src/components/ui/`: accordion, alert, alert-dialog, aspect-ratio, avatar, breadcrumb,
+calendar, carousel, chart, checkbox, collapsible, command, context-menu, dialog, drawer,
+dropdown-menu, form, hover-card, input-otp, menubar, navigation-menu, pagination, popover,
+progress, radio-group, resizable, scroll-area, sheet, sidebar, slider, table, tabs,
+textarea, toast, toaster, toggle, toggle-group, tooltip, use-toast.
+Manter: button, input, label, card, switch, select, sonner, skeleton, badge, separator
+(badge/separator/skeleton passam a ser usados na nova tela de Configurações).
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ UI (mobile-first)  pages/ · components/ · hooks/            │
-│   React Router · React Query · shadcn/ui · Tailwind tokens  │
-├─────────────────────────────────────────────────────────────┤
-│ Domínio (TS puro, sem UI, testável)                         │
-│   lib/intervention · lib/metrics · lib/behaviors · lib/plan │
-├─────────────────────────────────────────────────────────────┤
-│ Dados (acesso tipado)  lib/data/*  sobre o client supabase  │
-│   RLS garante isolamento por dono no banco                  │
-├─────────────────────────────────────────────────────────────┤
-│ Backend (Enter Cloud)                                       │
-│   Postgres (tabelas+RLS+triggers) · Auth · backend funcs    │
-│   functions/assistant-chat  functions/send-push             │
-└─────────────────────────────────────────────────────────────┘
-```
+### Hooks órfãos — deletar
+- `src/hooks/use-toast.ts`, `src/hooks/use-mobile.tsx`.
 
-Princípios:
-- **Camada de domínio independente da UI**: engine de intervenção e métricas são funções puras (`lib/`), testáveis com Vitest.
-- **Toda persistência via client tipado do supabase** (RLS no banco, nunca no cliente). Sem SQL cru em backend function.
-- **Sem mock funcional**: cada tela usa queries/mutations reais. Botões sempre executam ações reais (ou navegam).
+### App.tsx
+- Remover `<Toaster />` (Radix) e `TooltipProvider` (tooltip excluído); manter Sonner.
 
----
+### Dependências (pnpm remove) — sem referência após a limpeza
+- UI: recharts, framer-motion, vaul, cmdk, input-otp, embla-carousel-react,
+  react-resizable-panels, react-day-picker, @hookform/resolvers, react-hook-form, zod
+- Radix: @radix-ui/react-{accordion, alert-dialog, aspect-ratio, avatar, checkbox,
+  collapsible, context-menu, dialog, dropdown-menu, hover-card, menubar,
+  navigation-menu, popover, progress, radio-group, scroll-area, slider, tabs, toggle,
+  toggle-group, tooltip, toast}
+- Manter: next-themes (usado pelo sonner), date-fns (usado em páginas), @tanstack/react-query,
+  @enter-pro/analytics-sdk, @supabase/supabase-js, i18next, sonner, lucide-react,
+  @microsoft/fetch-event-source.
 
-## Estrutura de pastas (a criar)
+## 2. Padronizar erros, loading e mensagens
 
-```
-src/
-  main.tsx / App.tsx / router.tsx        # entrada, providers, rotas (neutras)
-  index.css                              # tokens dark premium + cor de ação
-  analytics.ts                           # bootstrap do @enter-pro/analytics-sdk
-  lib/
-    utils.ts                             # cn() (existe)
-    intervention/  types.ts · catalog.ts · engine.ts · engine.test.ts
-    metrics/       metrics.ts · metrics.test.ts
-    behaviors/     patterns.ts           # insights por regras (melhor horário, top obstáculo…)
-    plan/          suggestions.ts        # sugestão de planos SE→ENTÃO
-    data/          profiles.ts · tasks.ts · sessions.ts · events.ts
-                   checkins.ts · notifications.ts · subscriptions.ts
-                   patterns.ts · catalogs.ts · consents.ts · push.ts
-    ai/            chat.ts               # cliente SSE (fetch-event-source)
-  hooks/
-    use-auth.ts · use-profile.ts · use-tasks.ts · use-sessions.ts
-    use-ai-chat.ts · use-checkin.ts · use-dashboard.ts · use-push.ts
-  components/
-    app-shell.tsx                        # bottom nav mobile + header
-    guarded-route.tsx                    # redireciona não-autenticado para /auth
-    ui/                                  # shadcn (existe) + variantes novas
-  pages/
-    Index.tsx                            # Home real (próxima ação + "ESTOU TRAVADO")
-    auth/index.tsx                       # login/cadastro (email+password)
-    onboarding/index.tsx                 # perfil + tipo de procrastinação por regras
-    tasks/index.tsx · tasks/new.tsx      # CRUD com decomposição + primeiro passo
-    stuck/index.tsx                      # fluxo 2 passos → intervenção → sessão
-    session/[id].tsx                     # modo foco + check-in pós-sessão + recovery
-    dashboard/index.tsx                  # métricas + relatório semanal
-    profile/index.tsx                    # privacidade · planos (paywall) · SE→ENTÃO
-    assistant/index.tsx                  # chat IA
-    NotFound.tsx                         # existe
-supabase/
-  functions/assistant-chat/index.ts      # chat LLM (stream) + crise + fallback
-  functions/send-push/index.ts           # web push (VAPID via secret)
-public/
-  sw.js                                  # service worker (push + notificationclick)
-  manifest.webmanifest                   # PWA instalável
-  locales/en.json                        # recurso i18n editável (copy VIRA, pt-BR)
-```
+### Novo utilitário `src/lib/feedback.ts`
+- `logError(context, error)`: `console.error` com contexto (para o SDK de analytics
+  capturar automaticamente o erro via evento `error`).
+- `handleError(t, error, fallbackKey)`: `logError` + `toast.error(t(fallbackKey))`.
 
----
+### Error Boundary `src/components/error-boundary.tsx`
+- Classe com `componentDidCatch` → `logError` + fallback visual com tokens e botão
+  "Recarregar". Montado em `src/App.tsx` envolvendo o app.
 
-## Schema do banco (JÁ migrado — nenhuma migration nova no MVP)
+### Loading consistente
+- Usar `src/components/ui/skeleton.tsx` (existe) no lugar dos `animate-pulse` avulsos em
+  dashboard, tasks, home, notifications.
+- `src/components/page-spinner.tsx` (spinner central, tokens) para loading de página
+  (guarded-route, lazy routes, session).
 
-`supabase/migrations/migration_20260903_032004000` cria 20 tabelas. RLS em todas: owner = `user_id = auth.uid()`; catálogos `obstacles`/`interventions` com policy de leitura para `authenticated`.
+### Empty state consistente `src/components/empty-state.tsx`
+- Card pontilhado com ícone + texto + CTA opcional; substituir os blocos inline de
+  empty em tasks, notifications, dashboard, plans, profile.
 
-| Tabela | Papel no fluxo |
-|---|---|
-| `profiles` | nome, horários, dias de trabalho, meta principal, `procrastination_profile`, `onboarding_completed` |
-| `goals` | metas (categoria) |
-| `tasks` | título, `first_step`, `scheduled_at`, `duration_min`, status |
-| `sessions` | `planned_start`/`actual_start`, status, `obstacle_code`, `intervention_code`, `energy` |
-| `session_events` | `task_started`/`completed`/`abandoned`/`recovery_*` (base das métricas) |
-| `obstacles` (seed 12) | catálogo do passo ② do fluxo travado |
-| `interventions` (seed 8) | catálogo da engine |
-| `intervention_results` | o que foi mostrado/aceito → personalização |
-| `implementation_intentions` | planos SE→ENTÃO |
-| `energy_checkins` | energia 1–5 + contexto |
-| `focus_sessions` | duração real do modo foco |
-| `behavior_patterns` | insights gerados por regras |
-| `experiments` / `experiment_assignments` | estrutura A/B (UI futura; tabelas prontas) |
-| `notifications` / `push_subscriptions` | centro in-app + push |
-| `subscriptions` | free/premium (paywall mock) |
-| `consents` / `privacy_settings` | LGPD |
-| `audit_logs` | trilha de ações |
+### i18n
+- Adicionar chave genérica `errors.default` ("Não deu certo. Tente de novo.") e usá-la
+  como fallback em todos os catch.
 
-Ajustes futuros (registrados, **não** executados no MVP): índices adicionais, view SQL agregada de métricas, coluna de expiração de push.
+## 3. Validação de formulários e proteção contra ações duplicadas
 
----
+Padrão em todo handler assíncrono: guard de `saving`/`submitting`, `try/catch/finally`
+resetando o guard, `handleError` no catch, botão `disabled` enquanto pendente.
 
-## Decisões-chave
+- `src/pages/auth/index.tsx`: validar e-mail (regex) e senha (mín. 8 no signup) com
+  mensagens por campo antes do submit; `handleSubmit` já tem guard.
+- `src/pages/onboarding/index.tsx`: `try/catch/finally` no `next` (hoje sem catch — erro
+  deixaria `saving=true` travado).
+- `src/pages/tasks/new.tsx`: validar título (não vazio), duração (1–480, mensagem se
+  inválido em vez de clamp silencioso), `scheduled_at` válido; `try/catch/finally`.
+- `src/pages/stuck/index.tsx`: `handleStart` com try/catch (hoje sem); `handleAnalyze` já
+  tem try/finally.
+- `src/pages/profile/index.tsx`: `handleCreateIntention` com try/catch/finally.
+- `src/pages/session/index.tsx`: já protegido (guards + try/catch) — manter.
+- Home (energy check-in): impedir duplo envio do mesmo nível enquanto a mutation está
+  pendente.
+- `src/hooks/use-tasks.ts`/`use-sessions.ts` etc.: mutations já invalidadas; sem mudanças.
 
-- **Auth**: email+password (login/cadastro), auto-confirm; padrão `onAuthStateChange` registrado **antes** de checar sessão; `signUp` com `emailRedirectTo = origin`; rotas protegidas por `GuardedRoute`.
-- **Engine de intervenção** (`lib/intervention`): TS puro, determinística; mapa obstáculo→intervenção (task_too_big/no_start_point/tired/no_motivation → micro_start; phone/distracted → distraction_removal; anxious/fear_of_failure/perfectionism → cognitive_restructuring; no_environment → restructuring; bad_time → replan; other → micro_start) + mensagens/CTA pt-BR; testes unitários.
-- **Métricas** (`lib/metrics`): funções puras — taxa de iniciação (started/planned), LTA (actual_start − planned_start), taxa de conclusão, recovery rate; dashboard consome `lib/data` + regras de `behavior_patterns`.
-- **Paywall**: estados reais em `subscriptions` (free/premium via botão "assinar" que grava premium + `audit_logs`); **sem cobrança real** — única exceção de mock, documentada na tela.
-- **IA**: backend function `assistant-chat` (protocolo `openai_chat_completions`, model `alibaba/qwen-3.8-max`, streaming SSE); system prompt pt-BR curto orientado à ação, sem diagnóstico; **screen de crise** (frases de sofrimento → orienta ajuda profissional/CVV 188 e encerra fluxo); **fallback por regras** se o LLM falhar. Frontend: `@microsoft/fetch-event-source` (nova dependência) + hook `use-ai-chat` + página `/assistant`.
-- **Notificações**: centro in-app (`notifications`) + lembretes adaptativos (se ignora → reduz frequência); push via `sw.js` + `push_subscriptions` + backend function `send-push` (VAPID via secret — a pedir via modal); limitação iOS documentada.
-- **i18n**: `en.json` continua sendo o recurso editável do preview (fluxo atual do usuário não quebra). Ao final, `enter_i18n` skill adiciona `pt-BR` como idioma padrão sem quebrar o preview.
-- **Analytics**: eventos mínimos da spec §31 via `@enter-pro/analytics-sdk` (skill `enter_analytics`), sem conteúdo sensível.
+## 4. Performance
 
----
+- **Code-splitting**: `src/router.tsx` — converter imports de páginas para
+  `React.lazy(() => import(...))` + `Suspense` com `PageSpinner`. Helper
+  `lazyRoute(import)` em `src/router.tsx`. Reduz o bundle inicial (~1.4 MB hoje).
+- `src/pages/session/index.tsx` e dashboard: manter memoizações existentes.
 
-## Fases incrementais (cada fase: lint + tsc + build + verificação visual mobile)
+## 5. Responsividade, acessibilidade e consistência visual
 
-1. **Fundação**: tokens dark premium + cor de ação âmbar em `index.css`/`tailwind.config.ts`; `AppShell` (bottom nav mobile); rotas neutras em `router.tsx`; `GuardedRoute`; página `/auth` funcional (login/cadastro/logout); estado de sessão no React Query (`use-auth`).
-2. **Domínio + dados**: `lib/intervention/*` + testes; `lib/metrics/*` + testes; repos `lib/data/*` tipados (sem UI nova).
-3. **Onboarding → Tarefas → Home**: `/onboarding` grava `profiles` e gera `procrastination_profile` por regras; `/tasks` CRUD real (decomposição + `first_step` + `scheduled_at`); Home mostra próxima ação + primeiro passo + check-in de energia + CTA **ESTOU TRAVADO**.
-4. **Fluxo travado → Sessão**: `/stuck` (atividade → obstáculo → intervenção → CTA começar) cria `sessions`(planned)+`intervention_results`; `/session/:id` modo foco (cronômetro opcional, pausar/encerrar) grava `focus_sessions` + `session_events`; check-in pós-sessão; recovery "salvar o dia" (5/15/30 min) sem culpa.
-5. **Dashboard**: taxa de iniciação, LTA, conclusão, recovery; relatório semanal; `behavior_patterns` (melhor horário, top obstáculo, duração ideal) gerados e exibidos.
-6. **Perfil/privacidade/paywall**: consentimentos e exportação/exclusão de dados (LGPD); tela de planos (paywall mock real); planos SE→ENTÃO (`implementation_intentions`) com sugestão por regras.
-7. **Assistente IA**: dependência `@microsoft/fetch-event-source`; backend function `assistant-chat` + deploy; página `/assistant` com streaming, screen de crise e fallback.
-8. **Notificações + analytics**: `sw.js` + PWA manifest; centro in-app; push (VAPID); instrumentação mínima via skill `enter_analytics`.
-9. **Encerramento**: `pt-BR` padrão via skill `enter_i18n`; Vitest rodando; `pnpm lint` + `pnpm exec tsc --noEmit` + `pnpm run build` limpos; polimento visual (mobile 390 + desktop 1280).
+- Adicionar `focus-visible:ring-2 focus-visible:ring-ring` a botões custom:
+  chips de obstáculo (stuck), chips de check-in e sensação (session), energia (home),
+  filtro de período (dashboard), tabs (profile/settings).
+- `src/pages/NotFound.tsx`: restilizar com tokens (já citado).
+- Revisar páginas em `mobile_390` e `desktop_1280` (dashboard, settings, stuck) com
+  screenshots após implementação.
 
----
+## 6. Tela de Configurações (`/settings`)
 
-## Implementation checklist
+### Banco
+- Migração: `alter table public.profiles add column preferences jsonb not null default '{}'::jsonb`
+  (armazena `default_focus_min`). Aplicar via `supabase_migration` (tipos regeneram;
+  nunca editar `types.ts`).
 
-- [x] Fase 1: tokens dark premium + cor de ação em `src/index.css`/`tailwind.config.ts`
-- [x] Fase 1: `src/components/app-shell.tsx` (bottom nav: Home, Tarefas, Assistente, Painel, Perfil)
-- [x] Fase 1: rotas neutras registradas em `src/router.tsx` (auth, onboarding, tasks, stuck, session/:id, dashboard, profile, assistant, notifications)
-- [x] Fase 1: `GuardedRoute` redireciona não-autenticado para `/auth`
-- [x] Fase 1: `/auth` — login/cadastro/logout funcionais (auto-confirm), estado no `use-auth`
-- [x] Fase 2: `lib/intervention` (types, catalog 8, engine) + testes passando
-- [x] Fase 2: `lib/metrics` (initiation, LTA, completion, recovery) + testes passando
-- [x] Fase 2: repos `lib/data/*` para profiles, tasks, sessions, events, checkins, notifications, subscriptions, catalogs, consents, push, intentions, focus, intervention-results
-- [x] Fase 3: `/onboarding` grava perfil + `procrastination_profile` por regras + `onboarding_completed`
-- [x] Fase 3: `/tasks` CRUD real (criar com decomposição/`first_step`/`scheduled_at`, editar, concluir, excluir)
-- [x] Fase 3: Home real: próxima ação + primeiro passo + mini check-in energia (1–5) + CTA **ESTOU TRAVADO**
-- [x] Fase 4: `/stuck` 2 passos → intervenção da engine → `sessions`(planned) + `intervention_results` + `session_events`
-- [x] Fase 4: `/session/:id` — iniciar, pausar, encerrar, cronômetro opcional; grava `focus_sessions`
-- [x] Fase 4: check-in pós-sessão + recovery 5/15/30 ("salvar o dia") sem culpa
-- [x] Fase 5: Dashboard com 4 métricas + relatório semanal + `behavior_patterns`
-- [x] Fase 6: Perfil: consentimentos, exportação, exclusão de dados; paywall mock real; planos SE→ENTÃO + sugestão
-- [x] Fase 7: backend function `assistant-chat` (LLM stream + crise CVV 188 + fallback por regras) e deploy
-- [x] Fase 7: página `/assistant` com streaming (`@microsoft/fetch-event-source`) e screen de crise
-- [x] Fase 8: `public/sw.js` + `manifest.webmanifest`; centro in-app; lembrete ao agendar tarefa; eventos analytics mínimos
-- [ ] Fase 9: `pt-BR` padrão via skill `enter_i18n` (mantido `en.json` como recurso do preview; pendente); Vitest (engine + metrics); lint/tsc/build limpos
+### Função de backend `delete-account` (nova)
+- `supabase/functions/delete-account/index.ts`: com JWT do usuário, deleta as linhas de
+  todas as tabelas com `user_id` do usuário (ordem dependência: session_obstacles,
+  intervention_results, focus_sessions, session_events, sessions, tasks, goals,
+  energy_checkins, implementation_intentions, behavior_patterns, notifications,
+  push_subscriptions, subscriptions, consents, privacy_settings, audit_logs,
+  experiment_assignments, experiments, profiles) e então `supabase.auth.admin.deleteUser(uid)`.
+  Sem SQL cru — só client queries. Deploy via `supabase_deploy_edge_function`.
+  Conferir convenções em `enter_cloud/references/edge-functions.md` antes de escrever.
 
-## Verification checklist
+### Dados/hooks
+- `src/hooks/use-privacy.ts`: `getPrivacySettings` + `updatePrivacySettings`
+  (funções já existem em `src/lib/data/consents.ts`).
+- Reutilizar: `useProfile` (update), `usePush`, `setConsent`/`listConsents`,
+  `updatePrivacySettings`, `useSessions`/`useTasks`/`useIntentions`/`listFocusSessions`
+  para o export.
 
-- [ ] Build: `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm run build` e `pnpm test` sem erros
-- [ ] Positivo: cadastro → onboarding → criar tarefa com primeiro passo → Home mostra próxima ação → "ESTOU TRAVADO" → obstáculo → intervenção → sessão inicia → check-in grava → dashboard mostra taxa de iniciação/LTA/recovery
-- [ ] Positivo: chat IA responde em stream curto e orientado à ação; frase de crise → resposta de segurança (CVV 188) e fluxo interrompido
-- [ ] Positivo: paywall — conta free vê premium bloqueado; "assinar" (mock) grava `subscriptions.plan = premium` e desbloqueia
-- [ ] Negativo/default: não logado → redirecionado a `/auth`; rotas protegidas bloqueiam
-- [ ] Negativo/default: falha do LLM → fallback por regras responde sem quebrar
-- [ ] Fronteira: energia 1/5 → sessão mínima sugerida; 5/5 → sessão normal
-- [ ] Fronteira: RLS — outro usuário autenticado não lê dados alheios (select retorna vazio)
-- [ ] Manual no preview: fluxo mobile (bottom nav), dark theme, contraste AA, copy pt-BR direta e adulta (sem chaves i18n vazadas, sem emojis)
+### Página `src/pages/settings/index.tsx` (tabs: Perfil / Preferências / Notificações / Privacidade)
+- **Perfil**: nome (Input, validação não-vazio ≤80), objetivo principal (Select com
+  opções; grava `main_goal`), card informativo do perfil de procrastinação
+  (`deriveInsights`+`dominantProfile` dos dados reais), atalho "Plano e intenções"
+  → `/profile`.
+- **Preferências**: idioma (`LanguageSwitcher` existente), duração padrão de foco
+  (1–120, grava `preferences.default_focus_min`) — e usar esse default em
+  `tasks/new` e onboarding.
+- **Notificações**: notificações no app (Switch → `privacy_settings.notifications_enabled`),
+  push (Switch → `usePush.subscribe/unsubscribe`, com copy honesto quando VAPID vazio).
+- **Privacidade**: consentimentos (`behavioral_data_for_product`, `research_consent`,
+  `notifications` via `privacy_settings`/`consents`), exportar dados (estende o export
+  atual com intenções e check-ins), sair, **excluir conta** (confirmação em 2 etapas
+  inline → `supabase.functions.invoke("delete-account")` → `signOut` → `/auth`).
+
+### Navegação e perfil
+- `src/components/app-shell.tsx`: último item da nav → `/settings` (label "Ajustes",
+  ícone `Settings`).
+- `src/router.tsx`: rota `/settings`.
+- `src/pages/profile/index.tsx`: remover aba "privacidade" (consents/export/sair foram
+  para settings) e o mock do paywall; manter Plano (card informativo) + Intenções.
+
+### i18n
+- Novas chaves em `public/locales/en.json`: settings.*, errors.default, tasks.validação,
+  auth.validation.* etc. (todas em pt-BR, conforme padrão atual).
+
+## 7. Documentação técnica
+
+- `docs/architecture.md` (nova, resumida): visão geral, stack, arquitetura de pastas
+  (pages → hooks → lib/data → Enter Cloud), fluxo de dados principal (travado →
+  sessão → check-in → dashboard/personalização/analytics), banco (20+ tabelas + RLS
+  owner-scoped), serviços (metrics, dashboard, intervention, personalization),
+  integrações (Enter Cloud, backend functions assistant-chat/intervention-select/
+  delete-account, Enter Analytics, AI capability), pontos de evolução (IA já plugada via
+  `InterventionSelector`, experimentos, push real com VAPID, Stripe, i18n pt-BR/en).
+
+## 8. Preparação beta
+
+- `pnpm check` (lint+tsc), `pnpm test` (56 testes hoje + novos do feedback/settings se
+  aplicar), `pnpm build` limpos após todas as remoções.
+- Verificar PWA (public/sw.js, manifest.webmanifest) intactos.
+- Sem console.log no código; erros via `logError`.
+
+## Arquivos críticos
+- Deletar: ~39 arquivos `src/components/ui/*`, `src/hooks/use-toast.ts`,
+  `src/hooks/use-mobile.tsx`
+- Criar: `src/lib/feedback.ts`, `src/components/error-boundary.tsx`,
+  `src/components/page-spinner.tsx`, `src/components/empty-state.tsx`,
+  `src/hooks/use-privacy.ts`, `src/pages/settings/index.tsx`,
+  `supabase/functions/delete-account/index.ts`, `docs/architecture.md`
+- Editar: `src/App.tsx`, `src/router.tsx`, `src/components/app-shell.tsx`,
+  `src/pages/{auth,onboarding,tasks/new,profile,stuck,tasks,Index,dashboard,notifications,NotFound}.tsx`,
+  `public/locales/en.json`, `package.json`
+
+## Checklist de implementação
+- [ ] Remover mock do paywall em `src/pages/profile/index.tsx` (card estático "Plano Gratuito")
+- [ ] Restilizar `src/pages/NotFound.tsx` com tokens e `logError` (sem cores cruas/console cru)
+- [ ] Deletar os 39 arquivos `src/components/ui/*` não utilizados e os 2 hooks órfãos
+- [ ] Remover `<Toaster/>` (Radix) e `TooltipProvider` de `src/App.tsx`; manter Sonner
+- [ ] `pnpm remove` das dependências listadas (UI + Radix); `pnpm check` + `pnpm build` limpos
+- [ ] Criar `src/lib/feedback.ts` (`logError`, `handleError`) e usar nos catches das páginas
+- [ ] Criar `src/components/error-boundary.tsx` e envolvê-lo em `src/App.tsx`
+- [ ] Usar `Skeleton` nos loadings de dashboard, tasks, home, notifications
+- [ ] Criar `src/components/page-spinner.tsx` e `src/components/empty-state.tsx`; substituir empty states inline (tasks, notifications, dashboard, plans)
+- [ ] Validações: auth (email/senha), tasks/new (título, duração 1–480, data), onboarding (try/finally), stuck `handleStart`, profile intenção (try/finally), energia (guard de duplo clique)
+- [ ] Code-splitting: `React.lazy` + `Suspense` em `src/router.tsx`
+- [ ] `focus-visible` em chips/botões custom (stuck, session, home, dashboard, tabs)
+- [ ] Migração `profiles.preferences jsonb` aplicada via `supabase_migration`
+- [ ] Escrever `supabase/functions/delete-account/index.ts` e fazer deploy
+- [ ] Criar `src/hooks/use-privacy.ts`
+- [ ] Criar `src/pages/settings/index.tsx` com 4 abas funcionais e persistindo de verdade
+- [ ] Nav: `src/components/app-shell.tsx` aponta para `/settings`; rota em `src/router.tsx`
+- [ ] Slim de `src/pages/profile/index.tsx` (Plano informativo + Intenções + atalho settings)
+- [ ] `tasks/new` e onboarding usam `preferences.default_focus_min` como padrão
+- [ ] Chaves i18n novas em `public/locales/en.json`
+- [ ] Criar `docs/architecture.md`
+
+## Checklist de verificação
+- [ ] `pnpm check` (lint + tsc) sem erros
+- [ ] `pnpm test` verde (mantém os 56 testes atuais; novos se adicionados)
+- [ ] `pnpm build` sem erros (aviso de chunk deve sumir ou cair com code-splitting)
+- [ ] Sem import quebrado após deletar componentes (grep por `@/components/ui/<deletado>` retorna 0 em código de app)
+- [ ] Erro simulado em mutation mostra toast `errors.default` e `console.error` contextual; `saving` sempre reseta em `finally`
+- [ ] Botões de submit ficam `disabled` enquanto pendentes (auth, onboarding, tasks/new, stuck, settings, perfil)
+- [ ] `/settings` renderiza 4 abas; nome/objetivo persistem em `profiles`; duração padrão persiste em `preferences`
+- [ ] Excluir conta: confirmação em 2 etapas → função exclui linhas e conta → redireciona `/auth`
+- [ ] `/profile` sem aba privacidade e sem mock de upgrade; atalho para settings
+- [ ] NotFound estilizado com tokens
+- [ ] Screenshots mobile_390 e desktop_1280 das rotas afetadas (dashboard, settings, stuck, home) sem overflow/quebra
+- [ ] PWA: `public/sw.js` e `manifest.webmanifest` intactos
