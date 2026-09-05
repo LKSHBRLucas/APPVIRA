@@ -71,6 +71,23 @@ export async function getSession(
   return data as SessionWithTask | null;
 }
 
+/** Only the ids of sessions inside a period — cheap helper for cross-table counts. */
+export async function listSessionIds(
+  userId: string,
+  from?: string,
+  to?: string,
+): Promise<string[]> {
+  let query = supabase
+    .from("sessions")
+    .select("id")
+    .eq("user_id", userId);
+  if (from) query = query.gte("planned_start", from);
+  if (to) query = query.lt("planned_start", to);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []).map((r) => r.id);
+}
+
 export async function createSession(
   userId: string,
   input: SessionInput,

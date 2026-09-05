@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { FocusCheckinLike } from "@/lib/metrics/metrics";
 
 export type CheckinAnswers = {
   accomplished: "yes" | "partial" | "no";
@@ -25,4 +26,25 @@ export async function insertFocusSession(
     feeling: checkin?.feeling ?? null,
   });
   if (error) throw error;
+}
+
+/**
+ * Post-session check-ins (accomplished / intervention_helped / feeling),
+ * filtered by the session's ended_at (when the check-in happened).
+ */
+export async function listFocusSessions(
+  userId: string,
+  from?: string,
+  to?: string,
+): Promise<FocusCheckinLike[]> {
+  let query = supabase
+    .from("focus_sessions")
+    .select("accomplished, intervention_helped, feeling, ended_at")
+    .eq("user_id", userId)
+    .order("ended_at", { ascending: false });
+  if (from) query = query.gte("ended_at", from);
+  if (to) query = query.lt("ended_at", to);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as FocusCheckinLike[];
 }

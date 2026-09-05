@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { listSessionIds } from "@/lib/data/sessions";
 import type { ObstacleCode } from "@/lib/intervention/types";
 
 /**
@@ -29,4 +30,34 @@ export async function replaceSessionObstacles(
     })),
   );
   if (insertError) throw insertError;
+}
+
+/**
+ * Count obstacles inside a period (by the linked session's planned_start).
+ * Returns the full combination from session_obstacles, not just the primary.
+ */
+export async function listSessionObstacleCounts(
+  userId: string,
+  from?: string,
+  to?: string,
+): Promise<{ code: string; count: number }[]> {
+  let query = supabase
+    .from("session_obstacles")
+    .select("obstacle_code")
+    .eq("user_id", userId);
+
+  if (from || to) {
+    const ids = await listSessionIds(userId, from, to);
+    if (ids.length === 0) return [];
+    query = query.in("session_id", ids);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    counts.set(row.obstacle_code, (counts.get(row.obstacle_code) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([code, count]) => ({ code, count }));
 }
