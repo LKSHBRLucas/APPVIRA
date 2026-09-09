@@ -54,7 +54,7 @@ export default function NewTaskPage() {
       await create.mutateAsync({
         title: title.trim(),
         category,
-        first_step: first_step.trim() || null,
+        first_step: firstStep.trim() || null,
         duration_min: Math.round(durationNum),
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
       });
