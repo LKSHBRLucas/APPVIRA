@@ -1,0 +1,17 @@
+create extension if not exists pg_cron with schema extensions;
+create extension if not exists pg_net with schema extensions;
+
+select cron.schedule(
+  'notify-best-hour-hourly',
+  '0 * * * *',
+  $$
+  select net.http_post(
+    url := 'https://spb-t4nejaotko0742v2.supabase.opentrust.net/functions/v1/notify-best-hour',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi10NG5lamFvdGtvMDc0MnYyIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3ODgzNzgwNzgsImV4cCI6MjEwMzk1NDA3OH0.AvV3r8LaPXE81C407ozjBTdk6Zw9AaQ9iMZpyD6Y6kY'
+    ),
+    body := '{}'::jsonb
+  );
+  $$
+);

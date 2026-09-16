@@ -109,6 +109,20 @@ async function sendFcm(
   return res.ok;
 }
 
+/** Parses the service account secret, tolerating a double-encoded JSON string
+ * (some secret stores hand back the value wrapped in quotes). Returns the list
+ * of missing keys instead of leaking a cryptic runtime error. */
+function parseServiceAccount(raw: string): FcmServiceAccount | { missing: string[] } {
+  let parsed: unknown = JSON.parse(raw);
+  if (typeof parsed === "string") parsed = JSON.parse(parsed);
+  const account = (parsed ?? {}) as Partial<FcmServiceAccount>;
+  const missing = (["client_email", "private_key", "project_id"] as const).filter(
+    (key) => typeof account[key] !== "string" || !account[key],
+  );
+  if (missing.length > 0) return { missing };
+  return account as FcmServiceAccount;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -127,7 +141,21 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-  const account: FcmServiceAccount = JSON.parse(FCM_SERVICE_ACCOUNT_JSON);
+
+  let account: FcmServiceAccount;
+  try {
+    const parsed = parseServiceAccount(FCM_SERVICE_ACCOUNT_JSON);
+    if ("missing" in parsed) {
+      return jsonResponse(
+        { error: `FCM service account JSON is missing required fields: ${parsed.missing.join(", ")}` },
+        500,
+      );
+    }
+    account = parsed;
+  } catch {
+    return jsonResponse({ error: "FCM_SERVICE_ACCOUNT_JSON is not valid JSON" }, 500);
+  }
+
   const nowUtc = new Date();
   const localHour = (nowUtc.getUTCHours() + BR_UTC_OFFSET_HOURS + 24) % 24;
   const todayLocalDate = new Date(
