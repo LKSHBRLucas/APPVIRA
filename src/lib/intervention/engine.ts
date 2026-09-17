@@ -230,6 +230,80 @@ export function pickIntervention(input: ObstacleInput): InterventionPlan {
 }
 
 /**
+ * Escalation pick: same weighted-vote logic as `pickIntervention`, but any
+ * intervention code in `excluded` (already tried and reported as unhelpful
+ * in this session) is removed from contention before scoring. Used when a
+ * check-in reports `intervention_helped: "no"` so the user gets a genuinely
+ * different next step instead of the flow just ending.
+ *
+ * If every scored intervention is excluded, falls back to "recovery" (or
+ * "micro_start" if recovery itself was already excluded) — the lowest-cost,
+ * always-available option, so escalation never dead-ends.
+ */
+export function pickNextIntervention(
+  input: ObstacleInput,
+  excluded: InterventionCode[],
+): InterventionPlan {
+  const codes = normalizeCodes(input);
+  const effective = codes.length > 0 ? codes : (["other"] as ObstacleCode[]);
+  const isExcluded = (code: InterventionCode) => excluded.includes(code);
+
+  const scores = new Map<InterventionCode, number>();
+  for (const code of effective) {
+    for (const [intervention, weight] of OBSTACLE_VOTES[code]) {
+      if (isExcluded(intervention)) continue;
+      scores.set(intervention, (scores.get(intervention) ?? 0) + weight);
+    }
+  }
+
+  if (
+    input.note &&
+    hasRecurrence(input.note) &&
+    !isExcluded("implementation_intention")
+  ) {
+    scores.set(
+      "implementation_intention",
+      (scores.get("implementation_intention") ?? 0) + 2,
+    );
+  }
+
+  // Unlike pickIntervention, a 0-vote code must NOT win here — a code with
+  // zero votes wasn't actually indicated by the obstacles, it's just first
+  // in priority order. Only a real (>0) score counts as a genuine pick;
+  // otherwise fall through to the explicit low-cost fallback below.
+  let winner: InterventionCode | null = null;
+  let best = 0;
+  for (const intervention of FIRST_WINS) {
+    if (isExcluded(intervention)) continue;
+    const score = scores.get(intervention) ?? 0;
+    if (score > best) {
+      best = score;
+      winner = intervention;
+    }
+  }
+
+  if (!winner) {
+    // Low-cost fallback chain: recovery first, then walk the full priority
+    // order so a repeated escalation (3rd, 4th attempt...) never re-suggests
+    // a code the user already tried and reported as unhelpful.
+    const fallbackChain: InterventionCode[] = [
+      "recovery",
+      "micro_start",
+      ...FIRST_WINS,
+    ];
+    winner = fallbackChain.find((code) => !isExcluded(code)) ?? "micro_start";
+  }
+
+  const plan = buildPlan(
+    winner,
+    input,
+    "A abordagem anterior não ajudou — vamos tentar outra.",
+  );
+  plan.ruleId = `rules_v2_escalated:${[...effective].sort().join("+")}>${winner}`;
+  return plan;
+}
+
+/**
  * The current selector: deterministic rules. This is the single seam where a
  * data-driven/AI selector can be swapped in later — the flow only talks to
  * getInterventionSelector(), never to pickIntervention directly.

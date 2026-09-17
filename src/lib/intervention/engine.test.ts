@@ -3,6 +3,7 @@ import {
   getInterventionSelector,
   hasRecurrence,
   pickIntervention,
+  pickNextIntervention,
   rulesSelector,
 } from "./engine";
 import type { ObstacleInput } from "./types";
@@ -183,5 +184,55 @@ describe("saved implementation intentions influence the engine", () => {
       }),
     );
     expect(plan.intervention.code).toBe("implementation_intention");
+  });
+});
+
+describe("pickNextIntervention (escalation after a failed check-in)", () => {
+  it("excludes the already-tried intervention and picks the next best", () => {
+    // task_too_big alone: micro_start(3) > first_step(1). Excluding
+    // micro_start (already tried and unhelpful) should surface first_step.
+    const plan = pickNextIntervention(base({ code: "task_too_big" }), [
+      "micro_start",
+    ]);
+    expect(plan.intervention.code).toBe("first_step");
+    expect(plan.intervention.code).not.toBe("micro_start");
+    expect(plan.ruleId).toContain("rules_v2_escalated");
+  });
+
+  it("never returns an excluded code even with a combination of obstacles", () => {
+    const plan = pickNextIntervention(
+      base({ codes: ["phone", "distracted"] }),
+      ["distraction_removal"],
+    );
+    expect(plan.intervention.code).not.toBe("distraction_removal");
+  });
+
+  it("falls back to recovery when every scored option is excluded", () => {
+    const plan = pickNextIntervention(base({ code: "phone" }), [
+      "distraction_removal",
+    ]);
+    expect(plan.intervention.code).toBe("recovery");
+  });
+
+  it("falls back to micro_start when recovery is also excluded", () => {
+    const plan = pickNextIntervention(base({ code: "phone" }), [
+      "distraction_removal",
+      "recovery",
+    ]);
+    expect(plan.intervention.code).toBe("micro_start");
+  });
+
+  it("keeps working across repeated escalations without ever repeating a code", () => {
+    const tried: string[] = [];
+    let excluded: Parameters<typeof pickNextIntervention>[1] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const plan = pickNextIntervention(
+        base({ codes: ["task_too_big", "no_start_point"] }),
+        excluded,
+      );
+      expect(tried).not.toContain(plan.intervention.code);
+      tried.push(plan.intervention.code);
+      excluded = [...excluded, plan.intervention.code];
+    }
   });
 });

@@ -1,6 +1,7 @@
 import { Bell, Home, LayoutDashboard, ListTodo, MessageSquare, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, NavLink, Outlet } from "react-router-dom";
+import { useNativePush } from "@/hooks/use-native-push";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -13,6 +14,9 @@ const NAV_ITEMS = [
 
 export function AppShell() {
   const { t } = useTranslation();
+  // Silently registers for native push (Android/iOS) when running as a real
+  // app build; a no-op in the browser. See use-native-push.ts.
+  useNativePush();
 
   return (
     <div className="min-h-full bg-gradient-subtle">

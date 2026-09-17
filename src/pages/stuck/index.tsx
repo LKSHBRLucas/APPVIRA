@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, Loader2, Play, Save, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, ListChecks, Loader2, Play, Save, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -17,6 +17,7 @@ import { listObstacles } from "@/lib/data/catalogs";
 import { createTask } from "@/lib/data/tasks";
 import { recordInterventionResult } from "@/lib/data/intervention-results";
 import { replaceSessionObstacles } from "@/lib/data/session-obstacles";
+import { useTaskBreakdown } from "@/hooks/use-task-breakdown";
 import { pickPersonalized } from "@/lib/intervention/personalized";
 import type { InterventionPlan, ObstacleCode } from "@/lib/intervention/types";
 import { buildImplementationPlan } from "@/lib/plan/suggestions";
@@ -74,6 +75,8 @@ export default function StuckPage() {
   const [plan, setPlan] = useState<InterventionPlan | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [personalized, setPersonalized] = useState(false);
+  const [breakdownSteps, setBreakdownSteps] = useState<string[] | null>(null);
+  const { generate: generateBreakdown, save: saveBreakdown } = useTaskBreakdown();
 
   const { data: obstacles = [] } = useQuery({
     queryKey: ["obstacles"],
@@ -92,6 +95,24 @@ export default function StuckPage() {
   );
 
   const planIsIntention = plan?.intervention.code === "implementation_intention";
+
+  const showBreakdown =
+    selectedCodes.includes("task_too_big") || selectedCodes.includes("no_start_point");
+
+  const handleBreakdown = async () => {
+    const title = selectedTask?.title ?? note.trim();
+    if (!title) return;
+    try {
+      const result = await generateBreakdown.mutateAsync({
+        title,
+        firstStep: selectedTask?.first_step ?? plan?.firstStep ?? null,
+        note: note.trim() || undefined,
+      });
+      setBreakdownSteps(result.steps);
+    } catch {
+      toast.error(t("stuck.breakdownError"));
+    }
+  };
 
   const intentionPlan = useMemo(
     () =>
@@ -222,6 +243,10 @@ export default function StuckPage() {
           task_id: resolvedTaskId,
         },
       });
+
+      if (resolvedTaskId && breakdownSteps && breakdownSteps.length > 0) {
+        await saveBreakdown.mutateAsync({ taskId: resolvedTaskId, steps: breakdownSteps });
+      }
 
       // accepted=true → the user saw the intervention and pressed start.
       await recordInterventionResult(user!.id, {
@@ -396,6 +421,51 @@ export default function StuckPage() {
               </p>
             )}
           </div>
+
+          {showBreakdown && (
+            <div className="mt-4 rounded-lg border border-border bg-card p-4">
+              <div className="flex items-center gap-2">
+                <ListChecks className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">{t("stuck.breakdownTitle")}</p>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("stuck.breakdownHint")}
+              </p>
+
+              {breakdownSteps ? (
+                <ol className="mt-3 space-y-2">
+                  {breakdownSteps.map((step, i) => (
+                    <li
+                      key={i}
+                      className="flex items-start gap-2 rounded-md bg-muted/50 p-2 text-sm"
+                    >
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary">
+                        {i + 1}
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+
+              <Button
+                className="mt-3 w-full"
+                variant={breakdownSteps ? "outline" : "secondary"}
+                size="sm"
+                onClick={handleBreakdown}
+                disabled={generateBreakdown.isPending}
+              >
+                {generateBreakdown.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ListChecks className="h-4 w-4" />
+                )}
+                {breakdownSteps
+                  ? t("stuck.breakdownRegenerate")
+                  : t("stuck.breakdownCta")}
+              </Button>
+            </div>
+          )}
 
           {planIsIntention && intentionPlan && (
             <div className="mt-4 rounded-lg border border-border bg-card p-4">

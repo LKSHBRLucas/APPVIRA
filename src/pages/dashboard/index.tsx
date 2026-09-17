@@ -17,6 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { WeeklyReviewCard } from "@/components/weekly-review-card";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { upsertBehaviorPattern } from "@/lib/data/behaviors";
@@ -193,6 +194,8 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      <WeeklyReviewCard />
+
       {isLoading ? (
         <div className="space-y-3">
           <Skeleton className="h-24 w-full" />
@@ -213,6 +216,8 @@ export default function DashboardPage() {
         />
       ) : (
         <>
+          <WeeklyReviewCard />
+
           {report.started === 0 && (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
               <p className="text-sm font-medium">{t("dashboard.startEmptyTitle")}</p>

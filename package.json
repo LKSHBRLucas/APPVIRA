@@ -11,9 +11,16 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "pInstall": "pnpm install"
+    "pInstall": "pnpm install",
+    "cap:build": "pnpm run build:prod && npx cap sync android",
+    "cap:open:android": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/camera": "^8.2.4",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/geolocation": "^8.2.2",
     "@enter-pro/analytics-sdk": "^0.0.10",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@radix-ui/react-label": "^2.1.7",
@@ -42,6 +49,7 @@
     "vitest": "^5.0.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@babel/core": "^7.28.3",
     "@babel/plugin-transform-react-jsx": "^7.27.1",
     "@eslint/js": "^9.34.0",

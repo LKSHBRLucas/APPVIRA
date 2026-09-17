@@ -29,6 +29,7 @@ export interface SessionWithTask extends SessionRow {
     first_step: string | null;
     duration_min: number;
     category: string;
+    breakdown_steps: string[] | null;
   } | null;
 }
 
@@ -49,7 +50,7 @@ export async function listSessions(
 ): Promise<SessionWithTask[]> {
   let query = supabase
     .from("sessions")
-    .select("*, tasks(id, title, first_step, duration_min, category)")
+    .select("*, tasks(id, title, first_step, duration_min, category, breakdown_steps)")
     .eq("user_id", userId)
     .order("planned_start", { ascending: false });
   if (from) query = query.gte("planned_start", from);
@@ -64,7 +65,7 @@ export async function getSession(
 ): Promise<SessionWithTask | null> {
   const { data, error } = await supabase
     .from("sessions")
-    .select("*, tasks(id, title, first_step, duration_min, category)")
+    .select("*, tasks(id, title, first_step, duration_min, category, breakdown_steps)")
     .eq("id", sessionId)
     .maybeSingle();
   if (error) throw error;
@@ -120,7 +121,8 @@ export type SessionEventType =
   | "recovery_offered"
   | "recovery_accepted"
   | "recovery_completed"
-  | "recovery_declined";
+  | "recovery_declined"
+  | "escalation_accepted";
 
 export async function insertSessionEvent(
   userId: string,

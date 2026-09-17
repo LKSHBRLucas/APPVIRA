@@ -4055,6 +4055,7 @@ export type Database = {
       }
       tasks: {
         Row: {
+          breakdown_steps: Json | null
           category: string
           completed_at: string | null
           created_at: string
@@ -4070,6 +4071,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          breakdown_steps?: Json | null
           category?: string
           completed_at?: string | null
           created_at?: string
@@ -4085,6 +4087,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          breakdown_steps?: Json | null
           category?: string
           completed_at?: string | null
           created_at?: string
@@ -4107,6 +4110,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      device_push_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          last_seen_at: string
+          platform: string
+          token: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          platform?: string
+          token: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          platform?: string
+          token?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {

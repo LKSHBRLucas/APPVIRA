@@ -24,3 +24,14 @@ reports
 *.sln
 *.sw?
 code_template.zip
+
+# Capacitor / Android build artifacts
+android/app/build
+android/.gradle
+android/build
+android/local.properties
+android/captures
+android/app/src/main/assets/public
+android/app/src/main/assets/capacitor.config.json
+*.keystore
+*.jks

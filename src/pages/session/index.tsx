@@ -1,4 +1,4 @@
-import { Loader2, Pause, Play, RotateCcw, X } from "lucide-react";
+import { Loader2, Pause, Play, RotateCcw, Sparkles, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -11,6 +11,12 @@ import { useSessionMutations } from "@/hooks/use-session-mutations";
 import { useTasks } from "@/hooks/use-tasks";
 import { insertFocusSession } from "@/lib/data/focus";
 import { updateInterventionOutcome } from "@/lib/data/intervention-results";
+import {
+  getSessionObstacleCodes,
+  replaceSessionObstacles,
+} from "@/lib/data/session-obstacles";
+import { pickNextIntervention } from "@/lib/intervention/engine";
+import type { InterventionCode, ObstacleCode } from "@/lib/intervention/types";
 import { cn } from "@/lib/utils";
 
 const RECOVERY_OPTIONS = [5, 15, 30] as const;
@@ -49,7 +55,7 @@ export default function SessionPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: session, isLoading } = useSession(id);
-  const { patch, logEvent } = useSessionMutations();
+  const { start, patch, logEvent } = useSessionMutations();
   const { complete } = useTasks();
   const timer = useTimer();
 
@@ -58,6 +64,7 @@ export default function SessionPage() {
   const [accomplished, setAccomplished] = useState<Accomplished | null>(null);
   const [helped, setHelped] = useState<Helped | null>(null);
   const [feeling, setFeeling] = useState<number | null>(null);
+  const [escalating, setEscalating] = useState(false);
   const startedAtRef = useRef<string | null>(null);
 
   if (isLoading) {
@@ -202,6 +209,68 @@ export default function SessionPage() {
     navigate("/", { replace: true });
   };
 
+  /**
+   * Escalation: the check-in reported the intervention did NOT help. Instead
+   * of only logging a failure, pick the next-best intervention (excluding
+   * the one just tried) from the same obstacle combination and start a new
+   * session with it right away — closing the loop instead of ending it.
+   */
+  const escalate = async () => {
+    setEscalating(true);
+    try {
+      const obstacleCodes = await getSessionObstacleCodes(session.id);
+      const codes: ObstacleCode[] =
+        obstacleCodes.length > 0
+          ? obstacleCodes
+          : session.obstacle_code
+            ? [session.obstacle_code as ObstacleCode]
+            : [];
+
+      const excluded: InterventionCode[] = session.intervention_code
+        ? [session.intervention_code as InterventionCode]
+        : [];
+
+      const nextPlan = pickNextIntervention(
+        {
+          codes,
+          task: task
+            ? {
+                id: task.id,
+                title: task.title,
+                firstStep: task.first_step,
+                durationMin: task.duration_min,
+              }
+            : undefined,
+        },
+        excluded,
+      );
+
+      const { session: newSession } = await start.mutateAsync({
+        task_id: session.task_id,
+        planned_start: new Date().toISOString(),
+        duration_planned: nextPlan.intervention.durationMin,
+        obstacle_code: session.obstacle_code,
+        intervention_code: nextPlan.intervention.code,
+        energy: session.energy,
+      });
+
+      if (codes.length > 0) {
+        await replaceSessionObstacles(session.user_id, newSession.id, codes);
+      }
+
+      await logEvent.mutateAsync({
+        sessionId: session.id,
+        type: "escalation_accepted",
+        payload: { from: session.intervention_code, to: nextPlan.intervention.code },
+      });
+
+      navigate(`/session/${newSession.id}`, { replace: true });
+    } catch {
+      toast.error(t("session.saveError"));
+      setEscalating(false);
+    }
+  };
+
   const elapsedFloor = Math.floor(timer.elapsedSeconds);
   const mm = String(Math.floor(elapsedFloor / 60)).padStart(2, "0");
   const ss = String(elapsedFloor % 60).padStart(2, "0");
@@ -222,6 +291,24 @@ export default function SessionPage() {
             <p className="mt-2 text-sm text-muted-foreground">
               {t("home.firstStep")}: {task.first_step}
             </p>
+          )}
+
+          {task?.breakdown_steps && task.breakdown_steps.length > 0 && (
+            <div className="mt-3 rounded-lg border border-border bg-card p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                {t("session.breakdownTitle")}
+              </p>
+              <ol className="mt-2 space-y-1.5">
+                {task.breakdown_steps.map((step, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary">
+                      {i + 1}
+                    </span>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
 
           <div className="mt-6 space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
@@ -378,6 +465,28 @@ export default function SessionPage() {
           <h1 className="text-2xl font-bold">{t("recovery.title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t("recovery.hint")}</p>
 
+          {helped === "no" && (
+            <div className="mt-6 rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <p className="text-sm font-medium">{t("recovery.escalateTitle")}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t("recovery.escalateHint")}
+              </p>
+              <Button
+                className="mt-3 w-full"
+                size="lg"
+                onClick={escalate}
+                disabled={escalating || saving}
+              >
+                {escalating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {t("recovery.escalateCta")}
+              </Button>
+            </div>
+          )}
+
           <div className="mt-6 space-y-3">
             {RECOVERY_OPTIONS.map((minutes) => (
               <Button
@@ -386,7 +495,7 @@ export default function SessionPage() {
                 size="lg"
                 variant="outline"
                 onClick={() => recover(minutes)}
-                disabled={saving}
+                disabled={saving || escalating}
               >
                 <RotateCcw className="h-4 w-4" />
                 {t("recovery.recover", { minutes })}
@@ -396,7 +505,7 @@ export default function SessionPage() {
               variant="ghost"
               className="w-full"
               onClick={declineRecovery}
-              disabled={saving}
+              disabled={saving || escalating}
             >
               {t("recovery.skip")}
             </Button>

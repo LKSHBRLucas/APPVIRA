@@ -2,6 +2,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { listSessionIds } from "@/lib/data/sessions";
 import type { ObstacleCode } from "@/lib/intervention/types";
 
+/** The full obstacle combination recorded for one specific session (up to 3). */
+export async function getSessionObstacleCodes(
+  sessionId: string,
+): Promise<ObstacleCode[]> {
+  const { data, error } = await supabase
+    .from("session_obstacles")
+    .select("obstacle_code")
+    .eq("session_id", sessionId);
+  if (error) throw error;
+  return (data ?? []).map((row) => row.obstacle_code as ObstacleCode);
+}
+
 /**
  * Persist the full combination of obstacles for a session (up to 3), one row
  * per obstacle. Sessions keep `obstacle_code` as the primary obstacle; this
